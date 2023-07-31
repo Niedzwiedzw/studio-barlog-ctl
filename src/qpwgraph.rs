@@ -1,36 +1,12 @@
 use std::io::Write;
 
+use crate::directory_shenanigans::{home_dir, temp_path};
+
 use super::*;
 
 #[derive(Debug, Clone)]
 pub struct QpwgraphInstance {
     process: Arc<RwLock<ProcessWatcher>>,
-}
-
-fn home_dir() -> Result<PathBuf> {
-    directories::UserDirs::new()
-        .ok_or_else(|| eyre!("no user dirs"))
-        .map(|user| user.home_dir().to_owned())
-}
-
-/// qpwgraph has a bug so the file must be persistent...
-fn temp_path() -> Result<PathBuf> {
-    home_dir().map(|parent| parent.join("qpwgraph-reaper-generated-session.qpwgraph"))
-}
-
-pub trait ResultZipExt<T, E> {
-    fn zip<U>(self, other: Result<U, E>) -> Result<(T, U), E>;
-}
-
-impl<T, E> ResultZipExt<T, E> for Result<T, E> {
-    fn zip<U>(self, other: Result<U, E>) -> Result<(T, U), E> {
-        match (self, other) {
-            (Ok(one), Ok(other)) => Ok((one, other)),
-            (Ok(_), Err(message)) => Err(message),
-            (Err(message), Ok(_)) => Err(message),
-            (Err(message), Err(_)) => Err(message),
-        }
-    }
 }
 
 impl QpwgraphInstance {

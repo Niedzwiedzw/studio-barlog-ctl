@@ -33,8 +33,11 @@ pub enum ProcessEvent {
 
 type ProcessEventBus = tokio::sync::mpsc::UnboundedSender<ProcessEvent>;
 
+pub mod directory_shenanigans;
 mod process;
+pub mod utils;
 use process::*;
+use utils::*;
 pub mod reaper;
 pub mod video_streamer {
     use super::*;
