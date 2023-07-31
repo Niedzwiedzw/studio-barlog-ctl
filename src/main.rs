@@ -58,7 +58,7 @@ use tui::{
     Frame, Terminal,
 };
 
-#[derive(Debug, Clone, derive_more::Display, derive_more::FromStr)]
+#[derive(Debug, Clone, derive_more::Display, derive_more::FromStr, derive_more::AsRef)]
 pub struct ProjectName(String);
 
 mod state;

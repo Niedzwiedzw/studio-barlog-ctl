@@ -7,7 +7,7 @@ use tui::{
     widgets::{List, ListItem},
 };
 
-use crate::directory_shenanigans::ExistingDirectory;
+use crate::directory_shenanigans::{ExistingDirectory, ExistingDirectoryExt};
 
 use super::*;
 
@@ -22,6 +22,15 @@ fn sessions_directory() -> Result<ExistingDirectory> {
         .and_then(ExistingDirectory::check)
 }
 
+fn project_directory(project_name: &ProjectName) -> Result<ExistingDirectory> {
+    sessions_directory().and_then(|projects| {
+        projects
+            .as_ref()
+            .join(project_name.as_ref())
+            .directory_exists()
+    })
+}
+
 impl ReaperInstance {
     #[instrument(ret, err)]
     pub fn new(
@@ -30,12 +39,13 @@ impl ReaperInstance {
         notify: ProcessEventBus,
     ) -> Result<Self> {
         let path = "reaper".to_owned();
-        sessions_directory().and_then(|sessions_directory| {
+
+        project_directory(&project_name).and_then(|project_directory| {
             bounded_command(&path)
                 .arg("-new")
                 .arg("-saveas")
                 .arg(
-                    sessions_directory
+                    project_directory
                         .as_ref()
                         .join(format!("{project_name}.rpp")),
                 )

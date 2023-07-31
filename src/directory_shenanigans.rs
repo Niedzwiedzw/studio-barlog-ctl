@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::*;
 pub fn home_dir() -> Result<PathBuf> {
     directories::UserDirs::new()
@@ -12,6 +14,16 @@ pub fn temp_path() -> Result<PathBuf> {
 
 #[derive(Debug, Clone)]
 pub struct ExistingDirectory(PathBuf);
+
+pub trait ExistingDirectoryExt {
+    fn directory_exists(self) -> Result<ExistingDirectory>;
+}
+
+impl<T: AsRef<Path>> ExistingDirectoryExt for T {
+    fn directory_exists(self) -> Result<ExistingDirectory> {
+        ExistingDirectory::check(self.as_ref().to_owned())
+    }
+}
 
 impl AsRef<std::path::Path> for ExistingDirectory {
     fn as_ref(&self) -> &std::path::Path {
