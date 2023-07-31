@@ -1,0 +1,26 @@
+[package]
+name = "studio-barlog-ctl"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.72"
+chrono = "0.4.26"
+clap = { version = "4.3.19", features = ["derive", "env", "cargo"] }
+crossterm = "0.26.1"
+derive_more = "0.99.17"
+dioxus = { git = "https://github.com/DioxusLabs/dioxus", rev = "b526fa3ebc248b1cf9b56c546f96bba87ce87655" }
+dioxus-tui = { git = "https://github.com/DioxusLabs/dioxus", rev = "b526fa3ebc248b1cf9b56c546f96bba87ce87655" }
+eyre = "0.6.8"
+future-utils = "0.12.1"
+futures = "0.3.28"
+itertools = "0.11.0"
+parking_lot = "0.12.1"
+tokio = { version = "1.29.1", features = ["full"] }
+tokio-stream = "0.1.14"
+tracing = "0.1.37"
+tracing-appender = "0.2.2"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+tui = "0.19.0"
