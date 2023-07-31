@@ -7,28 +7,13 @@ use tui::{
     widgets::{List, ListItem},
 };
 
-use crate::directory_shenanigans::{ExistingDirectory, ExistingDirectoryExt};
+use crate::directory_shenanigans::project_directory;
 
 use super::*;
 
 #[derive(Debug, Clone)]
 pub struct ReaperInstance {
     process: Arc<RwLock<ProcessWatcher>>,
-}
-
-fn sessions_directory() -> Result<ExistingDirectory> {
-    crate::directory_shenanigans::home_dir()
-        .map(|home| home.join("Music").join("reaper-sessions"))
-        .and_then(ExistingDirectory::check)
-}
-
-fn project_directory(project_name: &ProjectName) -> Result<ExistingDirectory> {
-    sessions_directory().and_then(|projects| {
-        projects
-            .as_ref()
-            .join(project_name.as_ref())
-            .directory_exists()
-    })
 }
 
 impl ReaperInstance {
@@ -38,10 +23,10 @@ impl ReaperInstance {
         template: PathBuf,
         notify: ProcessEventBus,
     ) -> Result<Self> {
-        let path = "reaper".to_owned();
+        let process_path = "reaper".to_owned();
 
         project_directory(&project_name).and_then(|project_directory| {
-            bounded_command(&path)
+            bounded_command(&process_path)
                 .arg("-new")
                 .arg("-saveas")
                 .arg(
@@ -55,7 +40,7 @@ impl ReaperInstance {
                 .env("PIPEWIRE_LATENCY", "128/48000")
                 .spawn()
                 .wrap_err("spawning process instance")
-                .map(|child| ProcessWatcher::new(path, child, notify))
+                .map(|child| ProcessWatcher::new(process_path, child, notify))
                 .map(RwLock::new)
                 .map(Arc::new)
                 .map(|process| Self { process })

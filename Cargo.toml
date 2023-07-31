@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.72"
+byte-unit = "4.0.19"
 chrono = "0.4.26"
 clap = { version = "4.3.19", features = ["derive", "env", "cargo"] }
 crossterm = "0.26.1"

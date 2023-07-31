@@ -56,3 +56,18 @@ fn make_sure_directory_exists(dir: PathBuf) -> Result<PathBuf> {
                 .map(|_| dir)
         })
 }
+
+pub fn sessions_directory() -> Result<ExistingDirectory> {
+    crate::directory_shenanigans::home_dir()
+        .map(|home| home.join("Music").join("reaper-sessions"))
+        .and_then(ExistingDirectory::check)
+}
+
+pub fn project_directory(project_name: &ProjectName) -> Result<ExistingDirectory> {
+    sessions_directory().and_then(|projects| {
+        projects
+            .as_ref()
+            .join(project_name.as_ref())
+            .directory_exists()
+    })
+}

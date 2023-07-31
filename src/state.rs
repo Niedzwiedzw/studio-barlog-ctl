@@ -11,6 +11,7 @@ pub struct StudioState {
     pub wake_up: Option<UnboundedReceiverStream<ProcessEvent>>,
     reaper: ReaperInstance,
     qpwgraph: QpwgraphInstance,
+    ffmpeg: FfmpegInstance,
 }
 
 impl StudioState {
@@ -18,12 +19,16 @@ impl StudioState {
         let (notify, wake_up) = tokio::sync::mpsc::unbounded_channel();
         let qpwgraph =
             crate::qpwgraph::QpwgraphInstance::new(notify.clone()).wrap_err("Spawning qpwgraph")?;
-        let reaper = crate::reaper::ReaperInstance::new(project_name, template, notify.clone())
-            .wrap_err("starting reaper")?;
+        let reaper =
+            crate::reaper::ReaperInstance::new(project_name.clone(), template, notify.clone())
+                .wrap_err("starting reaper")?;
+        let ffmpeg = FfmpegInstance::new(project_name.clone(), notify.clone())
+            .wrap_err("spawning ffmpeg")?;
         Ok(Self {
             wake_up: Some(UnboundedReceiverStream::new(wake_up)),
             reaper,
             qpwgraph,
+            ffmpeg,
         })
     }
 }
@@ -38,6 +43,7 @@ impl crate::rendering::RenderToTerm for StudioState {
             wake_up: _,
             reaper,
             qpwgraph,
+            ffmpeg,
         } = self;
         macro_rules! layout {
             ($layout:expr) => {
@@ -51,7 +57,7 @@ impl crate::rendering::RenderToTerm for StudioState {
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
             .split(rect));
-        let [qpwgraph_col, reaper_col, _]: [Rect; 3] = layout!(Layout::default()
+        let [qpwgraph_col, reaper_col, ffmpeg_frame]: [Rect; 3] = layout!(Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Ratio(1, 3),
@@ -71,8 +77,9 @@ impl crate::rendering::RenderToTerm for StudioState {
                 .borders(Borders::ALL),
             header,
         );
-        reaper.render_to_term(frame, reaper_col)?;
         qpwgraph.render_to_term(frame, qpwgraph_col)?;
+        reaper.render_to_term(frame, reaper_col)?;
+        ffmpeg.render_to_term(frame, ffmpeg_frame)?;
 
         Ok(())
     }

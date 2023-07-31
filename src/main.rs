@@ -1,7 +1,7 @@
 use self::components::*;
 use self::qpwgraph::*;
 use self::reaper::*;
-use self::video_streamer::*;
+use self::video_capture::*;
 use clap::{Parser, Subcommand};
 use dioxus::prelude::*;
 use eyre::{bail, eyre, Result, WrapErr};
@@ -39,9 +39,7 @@ pub mod utils;
 use process::*;
 use utils::*;
 pub mod reaper;
-pub mod video_streamer {
-    use super::*;
-}
+pub mod video_capture;
 pub mod components {
     use super::*;
 }
