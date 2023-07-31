@@ -1,3 +1,10 @@
+use tui::{
+    layout::Rect,
+    style::{Color, Modifier, Style},
+    text::Span,
+    widgets::{Paragraph, Wrap},
+};
+
 use crate::directory_shenanigans::{project_directory, ExistingDirectoryExt};
 
 use super::*;
@@ -66,13 +73,13 @@ impl FfmpegInstance {
 
         video_file_path(&project_name).and_then(|video_file_path| {
             bounded_command(&process_path)
-                .args(["-thred_queue_size", arg!(512)])
+                .args(["-thread_queue_size", arg!(512)])
                 .args(["-r", arg!(RATE)])
-                .args(["-f", arg!("v412")])
+                .args(["-f", arg!("v4l2")])
                 .args(["-video_size", arg!(VIDEO_SIZE)])
                 .args(["-i", arg!(VIDEO_DEVICE)])
                 .args(["-crf", arg!(0)])
-                .args(["-c:v", arg!("lib264")])
+                .args(["-c:v", arg!("libx264")])
                 .args(["-preset", arg!("ultrafast")])
                 .args(["-threads", arg!(8)])
                 .arg(&video_file_path)
@@ -106,7 +113,30 @@ impl RenderToTerm for FfmpegInstance {
         f: &mut Frame<B>,
         rect: tui::layout::Rect,
     ) -> Result<()> {
-        self.process.write().render_to_term(f, rect)?;
+        let [file_size_block, process_watcher_block]: [Rect; 2] = layout!(Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Ratio(1, 9), Constraint::Ratio(8, 9),])
+            .split(rect));
+        let text_block = |text: String| {
+            let block = Block::default().borders(Borders::ALL).title(Span::styled(
+                format!("{}", self.video_file_path.display()),
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            Paragraph::new(text).block(block).wrap(Wrap { trim: false })
+        };
+
+        f.render_widget(
+            text_block(
+                self.file_size()
+                    .unwrap_or_else(|e| format!("reading size: {e:?}")),
+            ),
+            file_size_block,
+        );
+        self.process
+            .write()
+            .render_to_term(f, process_watcher_block)?;
         Ok(())
     }
 }

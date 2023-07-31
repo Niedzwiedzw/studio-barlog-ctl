@@ -14,3 +14,13 @@ impl<T, E> ResultZipExt<T, E> for Result<T, E> {
         }
     }
 }
+
+#[macro_export]
+macro_rules! layout {
+    ($layout:expr) => {
+        $layout
+            .try_into()
+            .map_err(|e| eyre!("invalid layout as [{} {}]: {e:?}", file!(), line!()))
+            .expect("bad layout")
+    };
+}

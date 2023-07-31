@@ -45,14 +45,6 @@ impl crate::rendering::RenderToTerm for StudioState {
             qpwgraph,
             ffmpeg,
         } = self;
-        macro_rules! layout {
-            ($layout:expr) => {
-                $layout
-                    .try_into()
-                    .map_err(|e| eyre!("invalid layout as [{} {}]: {e:?}", file!(), line!()))
-                    .expect("bad layout")
-            };
-        }
         let [header, body]: [Rect; 2] = layout!(Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
