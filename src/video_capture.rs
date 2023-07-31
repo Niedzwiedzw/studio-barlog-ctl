@@ -39,6 +39,7 @@ use super::*;
 pub struct FfmpegInstance {
     process: Arc<RwLock<ProcessWatcher>>,
     video_file_path: PathBuf,
+    file_size_updater: AbortOnDrop<()>,
 }
 
 fn video_file_path(project_name: &ProjectName) -> Result<PathBuf> {
@@ -70,7 +71,6 @@ impl FfmpegInstance {
                 format!("{}", $arg).as_str()
             };
         }
-
         video_file_path(&project_name).and_then(|video_file_path| {
             bounded_command(&process_path)
                 .args(["-thread_queue_size", arg!(512)])
@@ -85,12 +85,25 @@ impl FfmpegInstance {
                 .arg(&video_file_path)
                 .spawn()
                 .wrap_err("spawning ffmpeg instance")
-                .map(|child| ProcessWatcher::new(process_path, child, notify))
+                .map(|child| ProcessWatcher::new(process_path, child, notify.clone()))
                 .map(RwLock::new)
                 .map(Arc::new)
-                .map(|process| Self {
-                    process,
-                    video_file_path,
+                .map(|process| {
+                    let file_size_updater = tokio::task::spawn(async move {
+                        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+
+                        loop {
+                            interval.tick().await;
+                            notify.send(ProcessEvent::NewInput).ok();
+                        }
+                    })
+                    .abort_on_drop();
+
+                    Self {
+                        process,
+                        video_file_path,
+                        file_size_updater,
+                    }
                 })
         })
     }
