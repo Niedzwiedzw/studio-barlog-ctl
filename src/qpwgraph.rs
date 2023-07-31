@@ -7,11 +7,30 @@ pub struct QpwgraphInstance {
     process: Arc<RwLock<ProcessWatcher>>,
 }
 
+fn home_dir() -> Result<PathBuf> {
+    directories::UserDirs::new()
+        .ok_or_else(|| eyre!("no user dirs"))
+        .map(|user| user.home_dir().to_owned())
+}
+
 /// qpwgraph has a bug so the file must be persistent...
 fn temp_path() -> Result<PathBuf> {
-    std::env::current_dir()
-        .wrap_err("temporary directory unavailable")
-        .map(|parent| parent.join("qpwgraph-reaper-generated-session.qpwgraph"))
+    home_dir().map(|parent| parent.join("qpwgraph-reaper-generated-session.qpwgraph"))
+}
+
+pub trait ResultZipExt<T, E> {
+    fn zip<U>(self, other: Result<U, E>) -> Result<(T, U), E>;
+}
+
+impl<T, E> ResultZipExt<T, E> for Result<T, E> {
+    fn zip<U>(self, other: Result<U, E>) -> Result<(T, U), E> {
+        match (self, other) {
+            (Ok(one), Ok(other)) => Ok((one, other)),
+            (Ok(_), Err(message)) => Err(message),
+            (Err(message), Ok(_)) => Err(message),
+            (Err(message), Err(_)) => Err(message),
+        }
+    }
 }
 
 impl QpwgraphInstance {
@@ -19,23 +38,25 @@ impl QpwgraphInstance {
     #[instrument(ret, err)]
     pub fn new(notify: ProcessEventBus) -> Result<Self> {
         let process_name = "qpwgraph".to_owned();
-        temp_path()
-            .and_then(|temp_path| {
+        home_dir()
+            .zip(temp_path())
+            .and_then(|(home_dir, temp_path)| {
                 std::fs::write(&temp_path, Self::CONFIG.as_bytes())
                     .wrap_err("writing config")
                     .map(|_| temp_path)
-            })
-            .and_then(|temp_path| {
-                bounded_command(&process_name)
-                    .arg(temp_path)
-                    .spawn()
+                    .and_then(|temp_path| {
+                        bounded_command(&process_name)
+                            .current_dir(home_dir)
+                            .arg(temp_path)
+                            .spawn()
+                            .wrap_err("spawning qpwgraph instance")
+                            .map(|child| ProcessWatcher::new(process_name, child, notify))
+                            .map(RwLock::new)
+                            .map(Arc::new)
+                            .map(|process| Self { process })
+                    })
                     .wrap_err("spawning qpwgraph instance")
-                    .map(|child| ProcessWatcher::new(process_name, child, notify))
-                    .map(RwLock::new)
-                    .map(Arc::new)
-                    .map(|process| Self { process })
             })
-            .wrap_err("spawning qpwgraph instance")
     }
 }
 
