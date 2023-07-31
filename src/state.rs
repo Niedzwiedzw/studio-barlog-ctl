@@ -8,18 +8,22 @@ use tui::{
 use super::*;
 
 pub struct StudioState {
-    pub wake_up: Option<UnboundedReceiverStream<()>>,
+    pub wake_up: Option<UnboundedReceiverStream<ProcessEvent>>,
     reaper: ReaperInstance,
+    qpwgraph: QpwgraphInstance,
 }
 
 impl StudioState {
-    pub fn new(project_name: ProjectName) -> Result<Self> {
+    pub fn new(project_name: ProjectName, template: PathBuf) -> Result<Self> {
         let (notify, wake_up) = tokio::sync::mpsc::unbounded_channel();
-        let reaper = crate::reaper::ReaperInstance::new(project_name, notify.clone())
+        let qpwgraph =
+            crate::qpwgraph::QpwgraphInstance::new(notify.clone()).wrap_err("Spawning qpwgraph")?;
+        let reaper = crate::reaper::ReaperInstance::new(project_name, template, notify.clone())
             .wrap_err("starting reaper")?;
         Ok(Self {
             wake_up: Some(UnboundedReceiverStream::new(wake_up)),
             reaper,
+            qpwgraph,
         })
     }
 }
@@ -30,7 +34,11 @@ impl crate::rendering::RenderToTerm for StudioState {
         frame: &mut Frame<B>,
         rect: tui::layout::Rect,
     ) -> Result<()> {
-        let Self { wake_up: _, reaper } = self;
+        let Self {
+            wake_up: _,
+            reaper,
+            qpwgraph,
+        } = self;
         macro_rules! layout {
             ($layout:expr) => {
                 $layout
@@ -42,8 +50,8 @@ impl crate::rendering::RenderToTerm for StudioState {
         let [header, body]: [Rect; 2] = layout!(Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
-            .split(frame.size()));
-        let [reaper_col, _, _]: [Rect; 3] = layout!(Layout::default()
+            .split(rect));
+        let [qpwgraph_col, reaper_col, _]: [Rect; 3] = layout!(Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Ratio(1, 3),
@@ -64,6 +72,7 @@ impl crate::rendering::RenderToTerm for StudioState {
             header,
         );
         reaper.render_to_term(frame, reaper_col)?;
+        qpwgraph.render_to_term(frame, qpwgraph_col)?;
 
         Ok(())
     }

@@ -1,0 +1,246 @@
+<!DOCTYPE patchbay>
+<patchbay name="reaper-ression" version="0.4.2">
+ <items>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX25"/>
+   <input node="REAPER" port="REAPER:in26"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX10"/>
+   <input node="REAPER" port="REAPER:in11"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX22"/>
+   <input node="REAPER" port="REAPER:in23"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX10"/>
+   <input node="Chromium input [RecordStream]" port="Chromium input:input_FL"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out7"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX6"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX1"/>
+   <input node="REAPER" port="REAPER:in2"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX24"/>
+   <input node="REAPER" port="REAPER:in25"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out10"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX9"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="REAPER" port="REAPER:MIDI Output 4"/>
+   <input node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 Mackie/HUI"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX2"/>
+   <input node="REAPER" port="REAPER:in3"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX17"/>
+   <input node="REAPER" port="REAPER:in18"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="REAPER" port="REAPER:MIDI Output 3"/>
+   <input node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 MIDI DIN"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 Editor"/>
+   <input node="REAPER" port="REAPER:MIDI Input 5"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX7"/>
+   <input node="REAPER" port="REAPER:in8"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out9"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX8"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX27"/>
+   <input node="REAPER" port="REAPER:in28"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out2"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX1"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out6"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX5"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX0"/>
+   <input node="REAPER" port="REAPER:in1"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX4"/>
+   <input node="REAPER" port="REAPER:in5"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out5"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX4"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX29"/>
+   <input node="REAPER" port="REAPER:in30"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX28"/>
+   <input node="REAPER" port="REAPER:in29"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX6"/>
+   <input node="REAPER" port="REAPER:in7"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out4"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX3"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out1"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX0"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX30"/>
+   <input node="REAPER" port="REAPER:in31"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX12"/>
+   <input node="REAPER" port="REAPER:in13"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX3"/>
+   <input node="REAPER" port="REAPER:in4"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX15"/>
+   <input node="REAPER" port="REAPER:in16"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="REAPER" port="REAPER:MIDI Output 5"/>
+   <input node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 Editor"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="REAPER" port="REAPER:MIDI Output 1"/>
+   <input node="Midi-Bridge" port="Midi Through:Midi Through Port-0"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX10"/>
+   <input node="Chromium input [RecordStream]" port="Chromium input:input_FR"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX13"/>
+   <input node="REAPER" port="REAPER:in14"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX10"/>
+   <input node="Firefox Developer Edition [AudioCallbackDriver]" port="Firefox Developer Edition:input_FR"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX11"/>
+   <input node="REAPER" port="REAPER:in12"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out3"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX2"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX20"/>
+   <input node="REAPER" port="REAPER:in21"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX9"/>
+   <input node="REAPER" port="REAPER:in10"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX23"/>
+   <input node="REAPER" port="REAPER:in24"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX19"/>
+   <input node="REAPER" port="REAPER:in20"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 Mackie/HUI"/>
+   <input node="REAPER" port="REAPER:MIDI Input 4"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX26"/>
+   <input node="REAPER" port="REAPER:in27"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX10"/>
+   <input node="WEBRTC VoiceEngine [recStream]" port="WEBRTC VoiceEngine:input_FL"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Firefox Developer Edition [AudioStream]" port="Firefox Developer Edition:output_FL"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX0"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX14"/>
+   <input node="REAPER" port="REAPER:in15"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="Midi-Bridge" port="Midi Through:Midi Through Port-0"/>
+   <input node="REAPER" port="REAPER:MIDI Input 1"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX5"/>
+   <input node="REAPER" port="REAPER:in6"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX18"/>
+   <input node="REAPER" port="REAPER:in19"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX16"/>
+   <input node="REAPER" port="REAPER:in17"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 MIDI DIN"/>
+   <input node="REAPER" port="REAPER:MIDI Input 3"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="REAPER" port="REAPER:MIDI Output 2"/>
+   <input node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 USB MIDI"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX8"/>
+   <input node="REAPER" port="REAPER:in9"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX10"/>
+   <input node="Firefox Developer Edition [AudioCallbackDriver]" port="Firefox Developer Edition:input_FL"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX31"/>
+   <input node="REAPER" port="REAPER:in32"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Firefox Developer Edition [AudioStream]" port="Firefox Developer Edition:output_FR"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX1"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="REAPER" port="REAPER:out8"/>
+   <input node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:playback_AUX7"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX21"/>
+   <input node="REAPER" port="REAPER:in22"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-midi">
+   <output node="Midi-Bridge" port="Oxygen Pro 49:Oxygen Pro 49 USB MIDI"/>
+   <input node="REAPER" port="REAPER:MIDI Input 2"/>
+  </item>
+  <item node-type="pipewire" port-type="pipewire-audio">
+   <output node="Soundcraft Si MADI combo card Multichannel" port="Soundcraft Ui24:capture_AUX10"/>
+   <input node="WEBRTC VoiceEngine [recStream]" port="WEBRTC VoiceEngine:input_FR"/>
+  </item>
+ </items>
+</patchbay>
+

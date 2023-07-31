@@ -2,30 +2,37 @@ use self::components::*;
 use self::qpwgraph::*;
 use self::reaper::*;
 use self::video_streamer::*;
+use clap::{Parser, Subcommand};
 use dioxus::prelude::*;
 use eyre::{bail, eyre, Result, WrapErr};
-use futures::AsyncBufRead;
 use futures::FutureExt;
 use futures::StreamExt;
+use itertools::Itertools;
 use parking_lot::RwLock;
-use std::pin::Pin;
+use std::path::PathBuf;
+
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncRead;
 use tokio::io::BufReader;
 use tracing::debug;
-use tracing::span;
-use tracing::Subscriber;
 use tracing::{info, instrument};
 use tracing_subscriber::fmt::Layer;
-use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 pub mod qpwgraph;
 pub mod rendering;
 use rendering::*;
-type Notify = tokio::sync::mpsc::UnboundedSender<()>;
+
+#[derive(Debug, Clone, Copy)]
+pub enum ProcessEvent {
+    NewInput,
+    ProcessExtied,
+}
+
+type ProcessEventBus = tokio::sync::mpsc::UnboundedSender<ProcessEvent>;
+
 mod process;
 use process::*;
 pub mod reaper;
@@ -48,7 +55,7 @@ use tui::{
     Frame, Terminal,
 };
 
-#[derive(Debug, Clone, derive_more::Display)]
+#[derive(Debug, Clone, derive_more::Display, derive_more::FromStr)]
 pub struct ProjectName(String);
 
 mod state;
@@ -85,9 +92,44 @@ fn setup_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     })
 }
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Project name to create
+    #[arg(long)]
+    project_name: ProjectName,
+    /// Template to be used
+    #[arg(long)]
+    template: PathBuf,
+    // /// Sets a custom config file
+    // #[arg(short, long, value_name = "FILE")]
+    // config: Option<PathBuf>,
+
+    // /// Turn debugging information on
+    // #[arg(short, long, action = clap::ArgAction::Count)]
+    // debug: u8,
+
+    // #[command(subcommand)]
+    // command: Option<Commands>,
+}
+
+// #[derive(Subcommand)]
+// enum Commands {
+//     /// does testing things
+//     Test {
+//         /// lists test values
+//         #[arg(short, long)]
+//         list: bool,
+//     },
+// }
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     let _guard = setup_tracing();
+    let Cli {
+        project_name,
+        template,
+    } = Cli::parse();
     info!("starting");
     // setup terminal
     enable_raw_mode()?;
@@ -95,8 +137,7 @@ async fn main() -> Result<()> {
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let state =
-        state::StudioState::new(ProjectName("Demo".to_owned())).wrap_err("initializing project")?;
+    let state = state::StudioState::new(project_name, template).wrap_err("initializing project")?;
 
     // create app and run it
     let res = run_app(&mut terminal, state).await;
