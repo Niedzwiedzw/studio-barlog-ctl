@@ -180,7 +180,7 @@ async fn run_app_with_ui(
                 ready(run_app(&mut terminal, state).await)
                     .then(|app_result| {
                         disable_terminal_backend(terminal)
-                            .map(move |term_result| app_result.and_then(move |_| term_result))
+                            .map(move |term_result| app_result.and(term_result))
                     })
                     .await
             })
