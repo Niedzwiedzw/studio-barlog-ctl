@@ -26,7 +26,13 @@ impl QpwgraphInstance {
                             .arg(temp_path)
                             .spawn()
                             .wrap_err("spawning qpwgraph instance")
-                            .map(|child| ProcessWatcher::new(process_name, child, notify))
+                            .map(|child| {
+                                ProcessWatcher::new(
+                                    process_name,
+                                    child.gracefully_shutdown_on_drop(),
+                                    notify,
+                                )
+                            })
                             .map(RwLock::new)
                             .map(Arc::new)
                             .map(|process| Self { process })

@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use tui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -39,7 +41,54 @@ use super::*;
 pub struct FfmpegInstance {
     process: Arc<RwLock<ProcessWatcher>>,
     video_file_path: PathBuf,
-    file_size_updater: AbortOnDrop<()>,
+    ffplay: Arc<RwLock<ProcessWatcher>>,
+    _file_size_updater: AbortOnDrop<()>,
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct VideoDevice(PathBuf);
+
+impl VideoDevice {
+    pub fn all() -> Result<Vec<Self>> {
+        std::fs::read_dir("/dev/")
+            .wrap_err("reading /dev")
+            .map(|dev| {
+                dev.into_iter()
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .filter(|p| {
+                        p.as_os_str()
+                            .to_str()
+                            .map(|name| name.contains("video"))
+                            .unwrap_or_default()
+                    })
+                    .map(Self)
+                    .collect()
+            })
+    }
+
+    pub fn new(value: &str) -> Result<Self, String> {
+        Self::all()
+            .wrap_err("unable to read video devices")
+            .and_then(|devices| {
+                PathBuf::from_str(value)
+                    .wrap_err("not a valid path")
+                    .map(Self)
+                    .and_then(|valid| {
+                        devices
+                            .contains(&valid)
+                            .then_some(valid)
+                            .ok_or_else(|| eyre!("value not in {devices:?}"))
+                    })
+            })
+            .map_err(|e| format!("{e:?}"))
+    }
+}
+
+impl std::fmt::Display for VideoDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.display().fmt(f)
+    }
 }
 
 fn video_file_path(project_name: &ProjectName) -> Result<PathBuf> {
@@ -60,52 +109,79 @@ fn video_file_path(project_name: &ProjectName) -> Result<PathBuf> {
 
 impl FfmpegInstance {
     #[instrument(ret, err)]
-    pub fn new(project_name: ProjectName, notify: ProcessEventBus) -> Result<Self> {
+    pub fn new(
+        video_device: VideoDevice,
+        project_name: ProjectName,
+        notify: ProcessEventBus,
+    ) -> Result<Self> {
         let process_path = "ffmpeg".to_owned();
+        let ffplay_path = "ffplay".to_owned();
         const RATE: usize = 25;
         const VIDEO_SIZE: &str = "1920x1080";
-        const VIDEO_DEVICE: &str = "/dev/video1";
 
         macro_rules! arg {
             ($arg:expr) => {
                 format!("{}", $arg).as_str()
             };
         }
-        video_file_path(&project_name).and_then(|video_file_path| {
-            bounded_command(&process_path)
-                .args(["-thread_queue_size", arg!(512)])
-                .args(["-r", arg!(RATE)])
-                .args(["-f", arg!("v4l2")])
-                .args(["-video_size", arg!(VIDEO_SIZE)])
-                .args(["-i", arg!(VIDEO_DEVICE)])
-                .args(["-crf", arg!(0)])
-                .args(["-c:v", arg!("libx264")])
-                .args(["-preset", arg!("ultrafast")])
-                .args(["-threads", arg!(8)])
-                .arg(&video_file_path)
-                .spawn()
-                .wrap_err("spawning ffmpeg instance")
-                .map(|child| ProcessWatcher::new(process_path, child, notify.clone()))
-                .map(RwLock::new)
-                .map(Arc::new)
-                .map(|process| {
-                    let file_size_updater = tokio::task::spawn(async move {
-                        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        bounded_command(&ffplay_path)
+            .args([arg!(video_device)])
+            .spawn()
+            .wrap_err("spawning ffmpeg instance")
+            .map(|child| {
+                ProcessWatcher::new(
+                    ffplay_path,
+                    child.gracefully_shutdown_on_drop(),
+                    notify.clone(),
+                )
+            })
+            .map(RwLock::new)
+            .map(Arc::new)
+            .and_then(|ffplay| {
+                video_file_path(&project_name).and_then(|video_file_path| {
+                    bounded_command(&process_path)
+                        .args(["-thread_queue_size", arg!(512)])
+                        .args(["-r", arg!(RATE)])
+                        .args(["-f", arg!("v4l2")])
+                        .args(["-video_size", arg!(VIDEO_SIZE)])
+                        .args(["-i", arg!(video_device)])
+                        .args(["-crf", arg!(0)])
+                        .args(["-c:v", arg!("libx264")])
+                        .args(["-preset", arg!("ultrafast")])
+                        .args(["-threads", arg!(8)])
+                        .args([&video_file_path])
+                        .spawn()
+                        .wrap_err("spawning ffmpeg instance")
+                        .map(|child| {
+                            ProcessWatcher::new(
+                                process_path,
+                                child.gracefully_shutdown_on_drop(),
+                                notify.clone(),
+                            )
+                        })
+                        .map(RwLock::new)
+                        .map(Arc::new)
+                        .map(|process| {
+                            let file_size_updater = tokio::task::spawn(async move {
+                                let mut interval =
+                                    tokio::time::interval(std::time::Duration::from_secs(1));
 
-                        loop {
-                            interval.tick().await;
-                            notify.send(ProcessEvent::NewInput).ok();
-                        }
-                    })
-                    .abort_on_drop();
+                                loop {
+                                    interval.tick().await;
+                                    notify.send(ProcessEvent::NewInput).ok();
+                                }
+                            })
+                            .abort_on_drop();
 
-                    Self {
-                        process,
-                        video_file_path,
-                        file_size_updater,
-                    }
+                            Self {
+                                process,
+                                video_file_path,
+                                ffplay,
+                                _file_size_updater: file_size_updater,
+                            }
+                        })
                 })
-        })
+            })
     }
     pub fn file_size(&self) -> Result<String> {
         self.video_file_path

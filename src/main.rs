@@ -7,9 +7,13 @@ use dioxus::prelude::*;
 use eyre::{bail, eyre, Result, WrapErr};
 use futures::FutureExt;
 use futures::StreamExt;
+use futures::TryFutureExt;
 use itertools::Itertools;
 use parking_lot::RwLock;
+use std::io::Stdout;
+use std::io::Write;
 use std::path::PathBuf;
+use tracing::trace;
 
 use std::process::Stdio;
 use std::sync::Arc;
@@ -70,9 +74,7 @@ pub fn now() -> ProjectTime {
 
 fn bounded_command(path: &str) -> tokio::process::Command {
     let mut cmd = tokio::process::Command::new(path);
-    cmd.kill_on_drop(true)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     cmd
 }
 
@@ -95,6 +97,7 @@ fn setup_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
+#[command(next_line_help = true)]
 struct Cli {
     /// Project name to create
     #[arg(long)]
@@ -102,6 +105,10 @@ struct Cli {
     /// Template to be used
     #[arg(long)]
     template: PathBuf,
+    #[arg(long)]
+    reaper_web_base_url: reqwest::Url,
+    #[arg(long, value_parser = VideoDevice::new)]
+    video_device: VideoDevice,
     // /// Sets a custom config file
     // #[arg(short, long, value_name = "FILE")]
     // config: Option<PathBuf>,
@@ -124,25 +131,23 @@ struct Cli {
 //     },
 // }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<()> {
-    let _guard = setup_tracing();
-    let Cli {
-        project_name,
-        template,
-    } = Cli::parse();
-    info!("starting");
+type AppTerminal = Terminal<CrosstermBackend<Stdout>>;
+
+#[instrument(err, level = "warn")]
+async fn enable_terminal_backend() -> Result<AppTerminal> {
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-    let state = state::StudioState::new(project_name, template).wrap_err("initializing project")?;
+    let terminal = Terminal::new(backend)?;
 
-    // create app and run it
-    let res = run_app(&mut terminal, state).await;
+    Ok(terminal)
+}
 
+#[instrument(skip(terminal), ret, err, level = "warn")]
+async fn disable_terminal_backend(mut terminal: AppTerminal) -> Result<()> {
+    tracing::warn!("closing, cleaning up the terminal backend");
     // restore terminal
     disable_raw_mode()?;
     execute!(
@@ -151,10 +156,59 @@ async fn main() -> Result<()> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
+    std::io::stdout()
+        .lock()
+        .flush()
+        .wrap_err("flushing stdout")?;
+    // this resets the temrinal just in case
+    print!("\x1b[0m");
+    Ok(())
+}
+
+async fn run_app_with_ui(
+    Cli {
+        project_name,
+        template,
+        reaper_web_base_url,
+        video_device,
+    }: Cli,
+) -> Result<()> {
+    use std::future::ready;
+    state::StudioState::new(project_name, template, reaper_web_base_url, video_device)
+        .and_then(|state| {
+            enable_terminal_backend().and_then(|mut terminal| async move {
+                ready(run_app(&mut terminal, state).await)
+                    .then(|app_result| {
+                        disable_terminal_backend(terminal)
+                            .map(move |term_result| app_result.and_then(move |_| term_result))
+                    })
+                    .await
+            })
+        })
+        .then(|res| tokio::time::sleep(tokio::time::Duration::from_millis(100)).map(|_| res))
+        .await
+}
+
+pub const CLEANUP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+
+#[tokio::main(flavor = "multi_thread")]
+async fn main() -> Result<()> {
+    let _guard = setup_tracing();
+
+    let cli = Cli::parse();
+    // create app and run it
+    let res = run_app_with_ui(cli).await;
 
     if let Err(err) = res {
         println!("{:?}", err)
     }
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    println!(
+        "waiting for {}s - processess are cleaning up\n\n\r\n",
+        CLEANUP_DEADLINE.as_secs()
+    );
+    tokio::time::sleep(CLEANUP_DEADLINE).await;
 
     Ok(())
 }
@@ -199,7 +253,7 @@ async fn run_app<B: Backend>(
     redraw();
     while let Some(ev) = app_events.next().await {
         if let Ok(ev) = ev {
-            debug!(?ev, "new event");
+            trace!(?ev, "new event");
 
             match ev {
                 AppEvent::Terminal(event) => match event {

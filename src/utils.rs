@@ -57,3 +57,31 @@ impl<T> AbortOnDropExt<T> for tokio::task::JoinHandle<T> {
         AbortOnDrop(self)
     }
 }
+
+pub trait GracefullyShutdownChildExt {
+    fn gracefully_shutdown_on_drop(self) -> GracefullyShutdownChild;
+}
+
+impl GracefullyShutdownChildExt for tokio::process::Child {
+    fn gracefully_shutdown_on_drop(self) -> GracefullyShutdownChild {
+        GracefullyShutdownChild(self)
+    }
+}
+
+#[derive(derive_more::AsMut)]
+pub struct GracefullyShutdownChild(tokio::process::Child);
+
+impl Drop for GracefullyShutdownChild {
+    fn drop(&mut self) {
+        if let Some(pid) = self
+            .0
+            .id()
+            .and_then(|pid| TryInto::<i32>::try_into(pid).ok())
+        {
+            let pid = nix::unistd::Pid::from_raw(pid);
+            if let Err(errno) = nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM) {
+                tracing::warn!(?errno, "killing the child process failed")
+            }
+        }
+    }
+}

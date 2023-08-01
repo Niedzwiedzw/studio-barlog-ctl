@@ -15,14 +15,24 @@ pub struct StudioState {
 }
 
 impl StudioState {
-    pub fn new(project_name: ProjectName, template: PathBuf) -> Result<Self> {
+    pub async fn new(
+        project_name: ProjectName,
+        template: PathBuf,
+        reaper_web_base_url: reqwest::Url,
+        video_device: VideoDevice,
+    ) -> Result<Self> {
         let (notify, wake_up) = tokio::sync::mpsc::unbounded_channel();
         let qpwgraph =
             crate::qpwgraph::QpwgraphInstance::new(notify.clone()).wrap_err("Spawning qpwgraph")?;
-        let reaper =
-            crate::reaper::ReaperInstance::new(project_name.clone(), template, notify.clone())
-                .wrap_err("starting reaper")?;
-        let ffmpeg = FfmpegInstance::new(project_name.clone(), notify.clone())
+        let reaper = crate::reaper::ReaperInstance::new(
+            project_name.clone(),
+            template,
+            notify.clone(),
+            reaper_web_base_url,
+        )
+        .await
+        .wrap_err("starting reaper")?;
+        let ffmpeg = FfmpegInstance::new(video_device, project_name.clone(), notify.clone())
             .wrap_err("spawning ffmpeg")?;
         Ok(Self {
             wake_up: Some(UnboundedReceiverStream::new(wake_up)),

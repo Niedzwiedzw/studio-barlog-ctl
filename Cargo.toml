@@ -15,11 +15,25 @@ derive_more = "0.99.17"
 dioxus = { git = "https://github.com/DioxusLabs/dioxus", rev = "b526fa3ebc248b1cf9b56c546f96bba87ce87655" }
 dioxus-tui = { git = "https://github.com/DioxusLabs/dioxus", rev = "b526fa3ebc248b1cf9b56c546f96bba87ce87655" }
 directories = "5.0.1"
+enigo = "0.1.2"
 eyre = "0.6.8"
 future-utils = "0.12.1"
 futures = "0.3.28"
 itertools = "0.11.0"
+nix = "0.26.2"
 parking_lot = "0.12.1"
+reqwest = { version = "0.11.18", features = [
+  "stream",
+  "socks",
+  "rustls-tls-webpki-roots",
+  "gzip",
+  "trust-dns",
+  "rustls-tls",
+  "json",
+  "serde_json",
+  "mime_guess",
+  # "native-tls",
+], default-features = false }
 tempfile = { version = "3.7.0", features = ["nightly"] }
 tokio = { version = "1.29.1", features = ["full"] }
 tokio-stream = "0.1.14"

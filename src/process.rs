@@ -23,10 +23,11 @@ impl StdioMessage {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct StdioWatcher {
     pub inner: Arc<RwLock<VecDeque<StdioMessage>>>,
     notify: ProcessEventBus,
+    watcher: Option<AbortOnDrop<()>>,
 }
 
 impl StdioWatcher {
@@ -35,12 +36,13 @@ impl StdioWatcher {
         Self {
             inner: Arc::new(RwLock::new(VecDeque::with_capacity(Self::MESSAGE_CAPACITY))),
             notify,
+            watcher: None,
         }
     }
-    pub fn watching<T: AsyncRead + Unpin + Send + 'static>(self, reader: T) -> Self {
+    pub fn watching<T: AsyncRead + Unpin + Send + 'static>(mut self, reader: T) -> Self {
         let inner = self.inner.clone();
         let notify = self.notify.clone();
-        tokio::task::spawn(async move {
+        let watcher = tokio::task::spawn(async move {
             let reader = BufReader::new(reader);
             let mut reader = reader.lines();
             let notify = {
@@ -60,7 +62,9 @@ impl StdioWatcher {
                 }
                 inner.push_front(StdioMessage::new(line));
             }
-        });
+        })
+        .abort_on_drop();
+        let _ = self.watcher.insert(watcher);
         self
     }
 }
@@ -71,6 +75,7 @@ pub struct ProcessWatcher {
     pub stdout: Option<StdioWatcher>,
     pub stderr: Option<StdioWatcher>,
     pub status: Arc<RwLock<Option<String>>>,
+    pub watcher: AbortOnDrop<()>,
 }
 
 #[derive(Debug)]
@@ -80,21 +85,23 @@ pub enum ProcessStatus {
 }
 
 impl ProcessWatcher {
-    pub fn new(name: String, mut child: tokio::process::Child, notify: ProcessEventBus) -> Self {
+    pub fn new(name: String, mut child: GracefullyShutdownChild, notify: ProcessEventBus) -> Self {
         let status = Arc::new(RwLock::new(None));
         let stdout = child
+            .as_mut()
             .stdout
             .take()
             .map(|stdout| StdioWatcher::new(notify.clone()).watching(stdout));
         let stderr = child
+            .as_mut()
             .stderr
             .take()
             .map(|stderr| StdioWatcher::new(notify.clone()).watching(stderr));
 
-        {
+        let watcher = {
             to_owned![notify, status];
             tokio::task::spawn(async move {
-                let res = child.wait().await;
+                let res = child.as_mut().wait().await;
                 let _ = status.write().insert(format!("{res:?}"));
                 if let Err(message) = notify
                     .send(ProcessEvent::ProcessExtied)
@@ -102,13 +109,15 @@ impl ProcessWatcher {
                 {
                     tracing::error!(?message);
                 }
-            });
-        }
+            })
+            .abort_on_drop()
+        };
         Self {
             status,
             name,
             stdout,
             stderr,
+            watcher,
         }
     }
 
