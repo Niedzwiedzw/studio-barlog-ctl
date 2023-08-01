@@ -1,8 +1,8 @@
-use self::components::*;
+
 use self::qpwgraph::*;
 use self::reaper::*;
 use self::video_capture::*;
-use clap::{Parser, Subcommand};
+use clap::{Parser};
 use dioxus::prelude::*;
 use eyre::{bail, eyre, Result, WrapErr};
 use futures::FutureExt;
@@ -21,7 +21,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncRead;
 use tokio::io::BufReader;
 use tracing::debug;
-use tracing::{info, instrument};
+use tracing::{instrument};
 use tracing_subscriber::fmt::Layer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
@@ -45,14 +45,14 @@ use utils::*;
 pub mod reaper;
 pub mod video_capture;
 pub mod components {
-    use super::*;
+    
 }
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{error::Error, io};
+use std::{io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
@@ -64,7 +64,7 @@ use tui::{
 pub struct ProjectName(String);
 
 mod state;
-use state::*;
+
 
 pub type ProjectTime = chrono::DateTime<chrono::Local>;
 

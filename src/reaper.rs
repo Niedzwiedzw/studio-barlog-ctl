@@ -1,14 +1,10 @@
-use std::{future::ready, net::IpAddr, sync::Arc};
+use std::{future::ready, sync::Arc};
 
-use enigo::{Enigo, KeyboardControllable};
+
 use futures::TryFutureExt;
 use itertools::Itertools;
 use reqwest::Url;
-use tui::{
-    style::{Color, Modifier, Style},
-    text::{Span, Spans},
-    widgets::{List, ListItem},
-};
+
 
 use crate::directory_shenanigans::project_directory;
 
