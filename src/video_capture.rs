@@ -1,6 +1,7 @@
 use std::{future::ready, str::FromStr};
 
-use tokio::process::Child;
+use once_cell::sync::Lazy;
+use tokio::process::{Child, Command};
 use tui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -42,11 +43,10 @@ use super::*;
 pub struct FfmpegInstance {
     process: Arc<RwLock<ProcessWatcher>>,
     video_file_path: PathBuf,
-    _ffplay: Arc<RwLock<ProcessWatcher>>,
     _file_size_updater: AbortOnDrop<()>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, derive_more::AsRef)]
 pub struct VideoDevice(PathBuf);
 
 impl VideoDevice {
@@ -117,14 +117,77 @@ macro_rules! arg {
     };
 }
 
-pub fn ffplay_preview(video_device: VideoDevice) -> Result<Child> {
-    bounded_command(FFPLAY_PATH)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .args(["-f", arg!("v4l2")])
+const VIDEO4LINUX2_FORMAT: &str = "v4l2";
+const VIDEO_SIZE: &str = "1920x1080";
+const RATE: usize = 25;
+
+fn apply_video_read_args(command: &mut Command) -> &mut Command {
+    command
+        .args(["-f", arg!(VIDEO4LINUX2_FORMAT)])
+        .args(["-video_size", arg!(VIDEO_SIZE)])
+}
+
+pub async fn ffplay_preview(video_device: VideoDevice) -> Result<Child> {
+    try_enable_low_latency_for_magewell(video_device.clone()).await;
+    let mut command = bounded_command(FFPLAY_PATH);
+    #[cfg(not(debug_assertions))]
+    {
+        command
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .stdin(Stdio::null());
+    }
+    #[cfg(debug_assertions)]
+    {
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    }
+    apply_video_read_args(&mut command)
         .args([arg!(video_device)])
         .spawn()
-        .wrap_err("spawning ffmpeg instance")
+        .wrap_err_with(|| format!("spawning ffplay instance for {video_device:?}"))
+}
+
+pub const MWCAP_CONTROL_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| Default::default());
+
+pub async fn try_enable_low_latency_for_magewell(video_device: VideoDevice) {
+    if let Err(magewell_error) = enable_low_latency_for_magewell(video_device).await {
+        tracing::error!(?magewell_error);
+    }
+}
+
+#[instrument(ret, err, level = "info")]
+pub async fn enable_low_latency_for_magewell(video_device: VideoDevice) -> Result<()> {
+    let mutex = MWCAP_CONTROL_LOCK;
+    let _guard = mutex.lock().await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    Command::new("mwcap-control")
+        .arg("--video-output-lowlatency")
+        .arg("on")
+        .arg(video_device.as_ref())
+        .output()
+        .await
+        .wrap_err("spawning command")
+        .and_then(|output| {
+            let out_text = format!(
+                "stdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+            output
+                .status
+                .success()
+                .then_some(out_text.clone())
+                .ok_or_else(|| eyre!("bad status: {}", output.status))
+                .wrap_err_with(|| format!("output:\n\n{out_text}"))
+        })
+        .and_then(|output| {
+            output
+                .contains("successfully")
+                .then_some(())
+                .ok_or_else(|| eyre!("output text does not contain word 'successfully'"))
+                .wrap_err_with(|| format!("checking output: {output}"))
+        })
+        .wrap_err_with(|| format!("enabling low latency mode for {video_device:?}"))
 }
 
 impl FfmpegInstance {
@@ -135,65 +198,55 @@ impl FfmpegInstance {
         notify: ProcessEventBus,
     ) -> Result<Self> {
         let process_path = "ffmpeg".to_owned();
-        let ffplay_path = "ffplay".to_owned();
-        const RATE: usize = 25;
-        const VIDEO_SIZE: &str = "1920x1080";
+        try_enable_low_latency_for_magewell(video_device.clone()).await;
+        ready(video_file_path(&project_name))
+            .and_then(|video_file_path| {
+                let mut command = bounded_command(&process_path);
+                ready(
+                    apply_video_read_args(&mut command)
+                        .args(["-thread_queue_size", arg!(512)])
+                        .args(["-r", arg!(RATE)])
+                        .args(["-i", arg!(video_device)])
+                        .args(["-crf", arg!(0)])
+                        .args(["-c:v", arg!("libx264")])
+                        .args(["-preset", arg!("ultrafast")])
+                        .args(["-threads", arg!(8)])
+                        .args([&video_file_path])
+                        .spawn()
+                        .wrap_err("spawning ffmpeg instance"),
+                )
+                .and_then(|child| child.gracefully_shutdown_on_drop())
+                .map_ok({
+                    to_owned![notify];
+                    move |child| ProcessWatcher::new(process_path, child, notify.clone())
+                })
+                .map_ok(RwLock::new)
+                .map_ok(Arc::new)
+                .map_ok({
+                    to_owned![notify];
+                    move |process| {
+                        let file_size_updater = tokio::task::spawn(async move {
+                            let mut interval =
+                                tokio::time::interval(std::time::Duration::from_secs(1));
 
-        ready(ffplay_preview(video_device.clone()))
-            .and_then(|child| child.gracefully_shutdown_on_drop())
-            .map_ok(|child| ProcessWatcher::new(ffplay_path, child, notify.clone()))
-            .map_ok(RwLock::new)
-            .map_ok(Arc::new)
-            .and_then(|ffplay| {
-                ready(video_file_path(&project_name)).and_then(|video_file_path| {
-                    ready(
-                        bounded_command(&process_path)
-                            .args(["-thread_queue_size", arg!(512)])
-                            .args(["-r", arg!(RATE)])
-                            .args(["-f", arg!("v4l2")])
-                            .args(["-video_size", arg!(VIDEO_SIZE)])
-                            .args(["-i", arg!(video_device)])
-                            .args(["-crf", arg!(0)])
-                            .args(["-c:v", arg!("libx264")])
-                            .args(["-preset", arg!("ultrafast")])
-                            .args(["-threads", arg!(8)])
-                            .args([&video_file_path])
-                            .spawn()
-                            .wrap_err("spawning ffmpeg instance"),
-                    )
-                    .and_then(|child| child.gracefully_shutdown_on_drop())
-                    .map_ok({
-                        to_owned![notify];
-                        move |child| ProcessWatcher::new(process_path, child, notify.clone())
-                    })
-                    .map_ok(RwLock::new)
-                    .map_ok(Arc::new)
-                    .map_ok({
-                        to_owned![notify];
-                        move |process| {
-                            let file_size_updater = tokio::task::spawn(async move {
-                                let mut interval =
-                                    tokio::time::interval(std::time::Duration::from_secs(1));
-
-                                loop {
-                                    interval.tick().await;
-                                    notify.send(ProcessEvent::NewInput).ok();
-                                }
-                            })
-                            .abort_on_drop();
-
-                            Self {
-                                process,
-                                video_file_path,
-                                _ffplay: ffplay,
-                                _file_size_updater: file_size_updater,
+                            loop {
+                                interval.tick().await;
+                                notify.send(ProcessEvent::NewInput).ok();
                             }
+                        })
+                        .abort_on_drop();
+
+                        Self {
+                            process,
+                            video_file_path,
+                            _file_size_updater: file_size_updater,
                         }
-                    })
+                    }
                 })
             })
             .await
     }
+
     pub fn file_size(&self) -> Result<String> {
         self.video_file_path
             .metadata()

@@ -12,9 +12,11 @@ use futures::StreamExt;
 use futures::TryFutureExt;
 use itertools::Itertools;
 use parking_lot::RwLock;
+use std::future::ready;
 use std::io::Stdout;
 use std::io::Write;
 use std::path::PathBuf;
+use tracing::info;
 use tracing::trace;
 
 use std::process::Stdio;
@@ -79,7 +81,7 @@ fn bounded_command(path: &str) -> tokio::process::Command {
 fn setup_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     EnvFilter::try_from_default_env().ok().map(|env_filter| {
         let file_appender =
-            tracing_appender::rolling::hourly("./", format!("{}.txt", clap::crate_name!()));
+            tracing_appender::rolling::daily("./", format!("{}.txt", clap::crate_name!()));
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
         tracing_subscriber::registry()
@@ -170,7 +172,6 @@ async fn run_app_with_ui(
         video_device,
     }: MainConfig,
 ) -> Result<()> {
-    use std::future::ready;
     state::StudioState::new(project_name, template, reaper_web_base_url, video_device)
         .and_then(|state| {
             enable_terminal_backend().and_then(|mut terminal| async move {
@@ -188,34 +189,76 @@ async fn run_app_with_ui(
 
 pub const CLEANUP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
 
+async fn wait_for_accept(text: String) -> Result<()> {
+    tokio::task::spawn_blocking(move || {
+        inquire::Select::new(&text, vec!["OK"])
+            .prompt()
+            .wrap_err("prompting for confirmation")
+            .map(|_| ())
+    })
+    .await
+    .wrap_err("thread crashed")
+    .and_then(|v| v)
+}
+
+#[instrument]
+async fn present_video_device(
+    video_device: VideoDevice,
+) -> Result<(GracefullyShutdownChild, VideoDevice)> {
+    info!("presenting video device");
+    video_capture::ffplay_preview(video_device.clone())
+        .and_then(|ffplay| ffplay.gracefully_shutdown_on_drop())
+        .await
+        .map(|child| (child, video_device))
+}
+
+async fn app_main() -> Result<()> {
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::ShowVideos => {
+            let _children = ready(VideoDevice::all())
+                .and_then(|videos| {
+                    futures::future::join_all(videos.iter().cloned().map(
+                        |video_device| async move {
+                            present_video_device(video_device.clone())
+                                .await
+                                .wrap_err_with(move || {
+                                    format!("spawning ffplay for {video_device:?}")
+                                })
+                        },
+                    ))
+                    .map(|v| v.into_iter().filter_map(|v| v.ok()).collect_vec())
+                    .then(move |ready| {
+                        let (children, devices): (Vec<_>, Vec<_>) = ready.into_iter().unzip();
+                        wait_for_accept(format!(
+                            "available devices: {:?}",
+                            devices.into_iter().map(|device| device).collect_vec()
+                        ))
+                        .map_ok(move |_| children)
+                    })
+                })
+                .await?;
+            Ok(())
+        }
+        Commands::StartRecording(config) => {
+            let _child = {
+                let video_device = config.video_device.clone();
+                let (child, video_device) = present_video_device(video_device.clone()).await?;
+                wait_for_accept(format!("config video device {video_device}")).await?;
+                child
+            };
+            info!("chosen device, starting app");
+            run_app_with_ui(config).await
+        }
+    }
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     let _guard = setup_tracing();
 
-    let cli = Cli::parse();
-    let res = match cli.command {
-        Commands::ShowVideos => VideoDevice::all().and_then(|videos| {
-            videos
-                .iter()
-                .cloned()
-                .map(|v| {
-                    std::thread::sleep(std::time::Duration::from_millis(600));
-                    println!(" -- presenting [{v}]");
-                    video_capture::ffplay_preview(v)
-                        .map(|ffplay| ffplay.gracefully_shutdown_on_drop())
-                })
-                .collect::<Result<Vec<_>>>()
-                .and_then(move |_| {
-                    inquire::Confirm::new(&format!("available devices: {videos:?}"))
-                        .prompt()
-                        .wrap_err("prompting for confirmation")
-                        .map(|_| ())
-                })
-        }),
-        Commands::StartRecording(config) => run_app_with_ui(config).await,
-    };
     // create app and run it
-
+    let res = app_main().await;
     if let Err(err) = res {
         println!("{:?}", err)
     }

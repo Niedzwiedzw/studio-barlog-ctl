@@ -62,7 +62,7 @@ impl<T> AbortOnDropExt<T> for tokio::task::JoinHandle<T> {
 
 pub trait GracefullyShutdownChildExt {
     /// sleep for this time to check if process didn't crash
-    const HEALTHCHECK_DELAY_MS: u64 = 50;
+    const HEALTHCHECK_DELAY_MS: u64 = 200;
     async fn gracefully_shutdown_on_drop(self) -> Result<GracefullyShutdownChild>;
 }
 
@@ -77,6 +77,7 @@ async fn read<T: AsyncRead + Unpin>(v: Option<&mut T>) -> Result<String> {
 }
 
 impl GracefullyShutdownChildExt for tokio::process::Child {
+    #[instrument(err)]
     async fn gracefully_shutdown_on_drop(mut self) -> Result<GracefullyShutdownChild> {
         tokio::time::sleep(tokio::time::Duration::from_millis(
             Self::HEALTHCHECK_DELAY_MS,
@@ -84,8 +85,8 @@ impl GracefullyShutdownChildExt for tokio::process::Child {
         .await;
         match self.try_wait().wrap_err("healthchecking process")? {
             Some(code) => {
-                let stdout = read(self.stdout.as_mut()).await?;
-                let stderr = read(self.stderr.as_mut()).await?;
+                let stdout = read(self.stdout.as_mut()).await.unwrap_or_default();
+                let stderr = read(self.stderr.as_mut()).await.unwrap_or_default();
                 bail!("\ncode: {code}\nstdout: {stdout}\n\nstderr: {stderr\n}")
             }
             None => Ok(GracefullyShutdownChild(self)),
@@ -98,8 +99,9 @@ pub struct GracefullyShutdownChild(tokio::process::Child);
 
 impl Drop for GracefullyShutdownChild {
     fn drop(&mut self) {
+        tracing::warn!("gracefully killing a child process");
         if let Some(pid) = self
-            .0
+            .as_mut()
             .id()
             .and_then(|pid| TryInto::<i32>::try_into(pid).ok())
         {
