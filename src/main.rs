@@ -1,3 +1,5 @@
+#![feature(async_fn_in_trait)]
+
 use self::qpwgraph::*;
 use self::reaper::*;
 use self::video_capture::*;

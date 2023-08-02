@@ -1,3 +1,5 @@
+use std::future::ready;
+
 use super::*;
 use crate::directory_shenanigans::{home_dir, temp_path};
 
@@ -9,33 +11,30 @@ pub struct QpwgraphInstance {
 impl QpwgraphInstance {
     const CONFIG: &str = include_str!("../reaper-session.qpwgraph");
     #[instrument(ret, err)]
-    pub fn new(notify: ProcessEventBus) -> Result<Self> {
+    pub async fn new(notify: ProcessEventBus) -> Result<Self> {
         let process_name = "qpwgraph".to_owned();
-        home_dir()
-            .zip(temp_path())
+        ready(home_dir().zip(temp_path()))
             .and_then(|(home_dir, temp_path)| {
-                std::fs::write(&temp_path, Self::CONFIG.as_bytes())
-                    .wrap_err("writing config")
-                    .map(|_| temp_path)
+                tokio::fs::write(temp_path.clone(), Self::CONFIG.as_bytes())
+                    .map(|v| v.wrap_err("writing config"))
+                    .map_ok(|_| temp_path)
                     .and_then(|temp_path| {
-                        bounded_command(&process_name)
-                            .current_dir(home_dir)
-                            .arg(temp_path)
-                            .spawn()
-                            .wrap_err("spawning qpwgraph instance")
-                            .map(|child| {
-                                ProcessWatcher::new(
-                                    process_name,
-                                    child.gracefully_shutdown_on_drop(),
-                                    notify,
-                                )
-                            })
-                            .map(RwLock::new)
-                            .map(Arc::new)
-                            .map(|process| Self { process })
+                        ready(
+                            bounded_command(&process_name)
+                                .current_dir(home_dir)
+                                .arg(temp_path)
+                                .spawn()
+                                .wrap_err("spawning qpwgraph instance"),
+                        )
+                        .and_then(|child| child.gracefully_shutdown_on_drop())
+                        .map_ok(|child| ProcessWatcher::new(process_name, child, notify))
+                        .map_ok(RwLock::new)
+                        .map_ok(Arc::new)
+                        .map_ok(|process| Self { process })
                     })
-                    .wrap_err("spawning qpwgraph instance")
+                    .map(|res| res.wrap_err("spawning qpwgraph instance"))
             })
+            .await
     }
 }
 

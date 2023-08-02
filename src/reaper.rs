@@ -50,17 +50,12 @@ impl ReaperInstance {
                         .arg("-nosplash")
                         .env("PIPEWIRE_LATENCY", "128/48000")
                         .spawn()
-                        .wrap_err("spawning process instance")
-                        .map(|child| {
-                            ProcessWatcher::new(
-                                process_path.to_owned(),
-                                child.gracefully_shutdown_on_drop(),
-                                notify.clone(),
-                            )
-                        })
-                        .map(RwLock::new)
-                        .map(Arc::new),
+                        .wrap_err("spawning process instance"),
                 )
+                .and_then(|child| child.gracefully_shutdown_on_drop())
+                .map_ok(|child| ProcessWatcher::new(process_path.to_owned(), child, notify.clone()))
+                .map_ok(RwLock::new)
+                .map_ok(Arc::new)
             })
             .and_then(|child| {
                 reaper_web_client::ReaperWebClient::new(web_client_base_address).and_then(

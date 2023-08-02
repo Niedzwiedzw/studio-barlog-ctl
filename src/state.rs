@@ -22,18 +22,22 @@ impl StudioState {
         video_device: VideoDevice,
     ) -> Result<Self> {
         let (notify, wake_up) = tokio::sync::mpsc::unbounded_channel();
-        let qpwgraph =
-            crate::qpwgraph::QpwgraphInstance::new(notify.clone()).wrap_err("Spawning qpwgraph")?;
-        let reaper = crate::reaper::ReaperInstance::new(
-            project_name.clone(),
-            template,
-            notify.clone(),
-            reaper_web_base_url,
+        let qpwgraph = crate::qpwgraph::QpwgraphInstance::new(notify.clone())
+            .await
+            .wrap_err("Spawning qpwgraph")?;
+
+        let (reaper, ffmpeg) = futures::future::try_join(
+            crate::reaper::ReaperInstance::new(
+                project_name.clone(),
+                template,
+                notify.clone(),
+                reaper_web_base_url,
+            )
+            .map(|v| v.wrap_err("starting reaper")),
+            FfmpegInstance::new(video_device, project_name.clone(), notify.clone())
+                .map(|v| v.wrap_err("spawning ffmpeg")),
         )
-        .await
-        .wrap_err("starting reaper")?;
-        let ffmpeg = FfmpegInstance::new(video_device, project_name.clone(), notify.clone())
-            .wrap_err("spawning ffmpeg")?;
+        .await?;
         Ok(Self {
             wake_up: Some(UnboundedReceiverStream::new(wake_up)),
             reaper,
