@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use tokio::process::Child;
 use tui::{
     layout::Rect,
     style::{Color, Modifier, Style},
@@ -41,11 +42,11 @@ use super::*;
 pub struct FfmpegInstance {
     process: Arc<RwLock<ProcessWatcher>>,
     video_file_path: PathBuf,
-    ffplay: Arc<RwLock<ProcessWatcher>>,
+    _ffplay: Arc<RwLock<ProcessWatcher>>,
     _file_size_updater: AbortOnDrop<()>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VideoDevice(PathBuf);
 
 impl VideoDevice {
@@ -63,6 +64,7 @@ impl VideoDevice {
                             .unwrap_or_default()
                     })
                     .map(Self)
+                    .sorted()
                     .collect()
             })
     }
@@ -107,6 +109,24 @@ fn video_file_path(project_name: &ProjectName) -> Result<PathBuf> {
         })
 }
 
+const FFPLAY_PATH: &str = "ffplay";
+
+macro_rules! arg {
+    ($arg:expr) => {
+        format!("{}", $arg).as_str()
+    };
+}
+
+pub fn ffplay_preview(video_device: VideoDevice) -> Result<Child> {
+    bounded_command(FFPLAY_PATH)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .args(["-f", arg!("v4l2")])
+        .args([arg!(video_device)])
+        .spawn()
+        .wrap_err("spawning ffmpeg instance")
+}
+
 impl FfmpegInstance {
     #[instrument(ret, err)]
     pub fn new(
@@ -119,15 +139,7 @@ impl FfmpegInstance {
         const RATE: usize = 25;
         const VIDEO_SIZE: &str = "1920x1080";
 
-        macro_rules! arg {
-            ($arg:expr) => {
-                format!("{}", $arg).as_str()
-            };
-        }
-        bounded_command(&ffplay_path)
-            .args([arg!(video_device)])
-            .spawn()
-            .wrap_err("spawning ffmpeg instance")
+        ffplay_preview(video_device.clone())
             .map(|child| {
                 ProcessWatcher::new(
                     ffplay_path,
@@ -176,7 +188,7 @@ impl FfmpegInstance {
                             Self {
                                 process,
                                 video_file_path,
-                                ffplay,
+                                _ffplay: ffplay,
                                 _file_size_updater: file_size_updater,
                             }
                         })

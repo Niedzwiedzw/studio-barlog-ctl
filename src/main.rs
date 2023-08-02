@@ -1,8 +1,9 @@
-
+use self::components::*;
 use self::qpwgraph::*;
 use self::reaper::*;
 use self::video_capture::*;
-use clap::{Parser};
+use clap::Args;
+use clap::{Parser, Subcommand};
 use dioxus::prelude::*;
 use eyre::{bail, eyre, Result, WrapErr};
 use futures::FutureExt;
@@ -21,7 +22,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncRead;
 use tokio::io::BufReader;
 use tracing::debug;
-use tracing::{instrument};
+use tracing::{info, instrument};
 use tracing_subscriber::fmt::Layer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
@@ -45,14 +46,14 @@ use utils::*;
 pub mod reaper;
 pub mod video_capture;
 pub mod components {
-    
+    use super::*;
 }
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{io};
+use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
@@ -64,7 +65,7 @@ use tui::{
 pub struct ProjectName(String);
 
 mod state;
-
+use state::*;
 
 pub type ProjectTime = chrono::DateTime<chrono::Local>;
 
@@ -95,10 +96,8 @@ fn setup_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     })
 }
 
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-#[command(next_line_help = true)]
-struct Cli {
+#[derive(Args)]
+pub struct MainConfig {
     /// Project name to create
     #[arg(long)]
     project_name: ProjectName,
@@ -109,6 +108,12 @@ struct Cli {
     reaper_web_base_url: reqwest::Url,
     #[arg(long, value_parser = VideoDevice::new)]
     video_device: VideoDevice,
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+#[command(next_line_help = true)]
+struct Cli {
     // /// Sets a custom config file
     // #[arg(short, long, value_name = "FILE")]
     // config: Option<PathBuf>,
@@ -116,20 +121,15 @@ struct Cli {
     // /// Turn debugging information on
     // #[arg(short, long, action = clap::ArgAction::Count)]
     // debug: u8,
-
-    // #[command(subcommand)]
-    // command: Option<Commands>,
+    #[command(subcommand)]
+    command: Commands,
 }
 
-// #[derive(Subcommand)]
-// enum Commands {
-//     /// does testing things
-//     Test {
-//         /// lists test values
-//         #[arg(short, long)]
-//         list: bool,
-//     },
-// }
+#[derive(Subcommand)]
+enum Commands {
+    StartRecording(MainConfig),
+    ShowVideos,
+}
 
 type AppTerminal = Terminal<CrosstermBackend<Stdout>>;
 
@@ -166,12 +166,12 @@ async fn disable_terminal_backend(mut terminal: AppTerminal) -> Result<()> {
 }
 
 async fn run_app_with_ui(
-    Cli {
+    MainConfig {
         project_name,
         template,
         reaper_web_base_url,
         video_device,
-    }: Cli,
+    }: MainConfig,
 ) -> Result<()> {
     use std::future::ready;
     state::StudioState::new(project_name, template, reaper_web_base_url, video_device)
@@ -180,7 +180,7 @@ async fn run_app_with_ui(
                 ready(run_app(&mut terminal, state).await)
                     .then(|app_result| {
                         disable_terminal_backend(terminal)
-                            .map(move |term_result| app_result.and(term_result))
+                            .map(move |term_result| app_result.and_then(move |_| term_result))
                     })
                     .await
             })
@@ -196,8 +196,28 @@ async fn main() -> Result<()> {
     let _guard = setup_tracing();
 
     let cli = Cli::parse();
+    let res = match cli.command {
+        Commands::ShowVideos => VideoDevice::all().and_then(|videos| {
+            videos
+                .iter()
+                .cloned()
+                .map(|v| {
+                    std::thread::sleep(std::time::Duration::from_millis(600));
+                    println!(" -- presenting [{v}]");
+                    video_capture::ffplay_preview(v)
+                        .map(|ffplay| ffplay.gracefully_shutdown_on_drop())
+                })
+                .collect::<Result<Vec<_>>>()
+                .and_then(move |_| {
+                    inquire::Confirm::new(&format!("available devices: {videos:?}"))
+                        .prompt()
+                        .wrap_err("prompting for confirmation")
+                        .map(|_| ())
+                })
+        }),
+        Commands::StartRecording(config) => run_app_with_ui(config).await,
+    };
     // create app and run it
-    let res = run_app_with_ui(cli).await;
 
     if let Err(err) = res {
         println!("{:?}", err)
