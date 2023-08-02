@@ -49,7 +49,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{error::Error, io};
+use std::io;
 use tui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
@@ -61,7 +61,6 @@ use tui::{
 pub struct ProjectName(String);
 
 mod state;
-use state::*;
 
 pub type ProjectTime = chrono::DateTime<chrono::Local>;
 

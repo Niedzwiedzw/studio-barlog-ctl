@@ -1,8 +1,5 @@
-use std::io::Write;
-
-use crate::directory_shenanigans::{home_dir, temp_path};
-
 use super::*;
+use crate::directory_shenanigans::{home_dir, temp_path};
 
 #[derive(Debug, Clone)]
 pub struct QpwgraphInstance {

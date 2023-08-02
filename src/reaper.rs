@@ -2,24 +2,24 @@ use self::reaper_web_client::rea_request::{Playstate, TransportResponse};
 
 use super::*;
 use crate::directory_shenanigans::project_directory;
-use enigo::{Enigo, KeyboardControllable};
+
 use futures::TryFutureExt;
 use itertools::Itertools;
 use reqwest::Url;
-use std::{future::ready, net::IpAddr, sync::Arc};
+use std::{future::ready, sync::Arc};
 use tui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Span, Spans, Text},
-    widgets::{List, ListItem, Paragraph, Wrap},
+    widgets::{Paragraph, Wrap},
 };
 
 #[derive(Debug, Clone)]
 pub struct ReaperInstance {
     process: Arc<RwLock<ProcessWatcher>>,
-    web_client: Arc<reaper_web_client::ReaperWebClient>,
     state: Arc<RwLock<Result<reaper_web_client::rea_request::TransportResponse>>>,
-    state_watcher: Arc<AbortOnDrop<()>>,
+    _web_client: Arc<reaper_web_client::ReaperWebClient>,
+    _state_watcher: Arc<AbortOnDrop<()>>,
 }
 
 pub mod reaper_web_client;
@@ -91,9 +91,9 @@ impl ReaperInstance {
                             .map(|child| {
                                 child.map(|process| Self {
                                     process,
-                                    web_client,
+                                    _web_client: web_client,
                                     state,
-                                    state_watcher: Arc::new(state_watcher),
+                                    _state_watcher: Arc::new(state_watcher),
                                 })
                             })
                     },
