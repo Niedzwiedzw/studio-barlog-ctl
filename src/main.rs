@@ -1,4 +1,3 @@
-use self::components::*;
 use self::qpwgraph::*;
 use self::reaper::*;
 use self::video_capture::*;
@@ -22,7 +21,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio::io::AsyncRead;
 use tokio::io::BufReader;
 use tracing::debug;
-use tracing::{info, instrument};
+use tracing::instrument;
 use tracing_subscriber::fmt::Layer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
@@ -45,9 +44,6 @@ use process::*;
 use utils::*;
 pub mod reaper;
 pub mod video_capture;
-pub mod components {
-    use super::*;
-}
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
