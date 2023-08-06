@@ -43,6 +43,7 @@ type ProcessEventBus = tokio::sync::mpsc::UnboundedSender<ProcessEvent>;
 
 pub mod directory_shenanigans;
 mod process;
+pub mod reaper_save_file_parser;
 pub mod utils;
 use process::*;
 use utils::*;
@@ -128,6 +129,7 @@ struct Cli {
 enum Commands {
     StartRecording(MainConfig),
     ShowVideos,
+    QpwgraphOnly,
 }
 
 type AppTerminal = Terminal<CrosstermBackend<Stdout>>;
@@ -241,14 +243,20 @@ async fn app_main() -> Result<()> {
             Ok(())
         }
         Commands::StartRecording(config) => {
-            let _child = {
+            {
                 let video_device = config.video_device.clone();
-                let (child, video_device) = present_video_device(video_device.clone()).await?;
+                let (_child, video_device) = present_video_device(video_device.clone()).await?;
                 wait_for_accept(format!("config video device {video_device}")).await?;
-                child
-            };
+            }
             info!("chosen device, starting app");
+
             run_app_with_ui(config).await
+        }
+        Commands::QpwgraphOnly => {
+            let (tx, _) = tokio::sync::mpsc::unbounded_channel();
+            let _instance = qpwgraph::QpwgraphInstance::new(tx).await;
+            wait_for_accept(format!("press anything to stop qpwgraph")).await?;
+            Ok(())
         }
     }
 }

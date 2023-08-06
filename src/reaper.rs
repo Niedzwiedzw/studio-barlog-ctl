@@ -2,6 +2,13 @@ use self::reaper_web_client::rea_request::{Playstate, TransportResponse};
 
 use super::*;
 use crate::directory_shenanigans::project_directory;
+pub mod common_types {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::FromRepr, strum::Display)]
+    pub enum ReaperBool {
+        False = 0,
+        True = 1,
+    }
+}
 
 use futures::TryFutureExt;
 use itertools::Itertools;

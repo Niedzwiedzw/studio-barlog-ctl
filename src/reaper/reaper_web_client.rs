@@ -11,6 +11,8 @@ pub struct ReaperWebClient {
 pub mod rea_request {
     use std::str::FromStr;
 
+    use crate::reaper::common_types::ReaperBool;
+
     use super::*;
     pub trait ReaResponse: Sized {
         fn from_response(response: &str) -> Result<Self>;
@@ -27,11 +29,6 @@ pub mod rea_request {
         }
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::FromRepr, strum::Display)]
-    pub enum ReaperBool {
-        False = 0,
-        True = 1,
-    }
     #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::FromRepr)]
     pub enum Playstate {
         Stopped = 0,
