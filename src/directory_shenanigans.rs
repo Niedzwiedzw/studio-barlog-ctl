@@ -15,6 +15,16 @@ pub fn temp_home_path(name: &str) -> Result<PathBuf> {
 #[derive(Debug, Clone)]
 pub struct ExistingDirectory(PathBuf);
 
+impl std::str::FromStr for ExistingDirectory {
+    type Err = eyre::Report;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        s.parse::<PathBuf>()
+            .wrap_err("invalid path")
+            .and_then(|path| path.directory_exists())
+    }
+}
+
 pub trait ExistingDirectoryExt {
     fn directory_exists(self) -> Result<ExistingDirectory>;
 }
@@ -57,17 +67,19 @@ fn make_sure_directory_exists(dir: PathBuf) -> Result<PathBuf> {
         })
 }
 
-pub fn sessions_directory() -> Result<ExistingDirectory> {
-    crate::directory_shenanigans::home_dir()
-        .map(|home| home.join("Music").join("reaper-sessions"))
-        .and_then(ExistingDirectory::check)
-}
+// pub fn sessions_directory() -> Result<ExistingDirectory> {
+//     crate::directory_shenanigans::home_dir()
+//         .map(|home| home.join("Music").join("reaper-sessions"))
+//         .and_then(ExistingDirectory::check)
+// }
 
-pub fn project_directory(project_name: &ProjectName) -> Result<ExistingDirectory> {
-    sessions_directory().and_then(|projects| {
-        projects
-            .as_ref()
-            .join(project_name.as_ref())
-            .directory_exists()
-    })
+pub fn project_directory(
+    sessions_directory: SessionsDirectory,
+    project_name: &ProjectName,
+) -> Result<ExistingDirectory> {
+    sessions_directory
+        .as_ref()
+        .as_ref()
+        .join(project_name.as_ref())
+        .directory_exists()
 }

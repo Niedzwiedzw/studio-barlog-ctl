@@ -93,9 +93,12 @@ impl std::fmt::Display for VideoDevice {
     }
 }
 
-fn video_file_path(project_name: &ProjectName) -> Result<PathBuf> {
+fn video_file_path(
+    sessions_directory: SessionsDirectory,
+    project_name: &ProjectName,
+) -> Result<PathBuf> {
     let now = crate::now().format("%Y-%m-%d--%H-%M-%S").to_string();
-    project_directory(project_name)
+    project_directory(sessions_directory, project_name)
         .and_then(|project_dir| {
             project_dir
                 .as_ref()
@@ -147,7 +150,7 @@ pub async fn ffplay_preview(video_device: VideoDevice) -> Result<Child> {
         .wrap_err_with(|| format!("spawning ffplay instance for {video_device:?}"))
 }
 
-pub const MWCAP_CONTROL_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(|| Default::default());
+pub static MWCAP_CONTROL_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(Default::default);
 
 pub async fn try_enable_low_latency_for_magewell(video_device: VideoDevice) {
     if let Err(magewell_error) = enable_low_latency_for_magewell(video_device).await {
@@ -157,8 +160,7 @@ pub async fn try_enable_low_latency_for_magewell(video_device: VideoDevice) {
 
 #[instrument(ret, err, level = "info")]
 pub async fn enable_low_latency_for_magewell(video_device: VideoDevice) -> Result<()> {
-    let mutex = MWCAP_CONTROL_LOCK;
-    let _guard = mutex.lock().await;
+    let _guard = MWCAP_CONTROL_LOCK.lock().await;
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     Command::new("mwcap-control")
         .arg("--video-output-lowlatency")
@@ -193,13 +195,14 @@ pub async fn enable_low_latency_for_magewell(video_device: VideoDevice) -> Resul
 impl FfmpegInstance {
     #[instrument(ret, err)]
     pub async fn new(
+        sessions_directory: SessionsDirectory,
         video_device: VideoDevice,
         project_name: ProjectName,
         notify: ProcessEventBus,
     ) -> Result<Self> {
         let process_path = "ffmpeg".to_owned();
         try_enable_low_latency_for_magewell(video_device.clone()).await;
-        ready(video_file_path(&project_name))
+        ready(video_file_path(sessions_directory, &project_name))
             .and_then(|video_file_path| {
                 let mut command = bounded_command(&process_path);
                 ready(

@@ -1,37 +1,46 @@
 #![feature(async_fn_in_trait)]
-
-use self::qpwgraph::*;
-use self::reaper::*;
-use self::video_capture::*;
-use clap::Args;
-use clap::{Parser, Subcommand};
+use self::{qpwgraph::*, reaper::*, video_capture::*};
+use clap::{Args, Parser, Subcommand};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use dioxus::prelude::*;
+use directory_shenanigans::ExistingDirectory;
 use eyre::{bail, eyre, Result, WrapErr};
-use futures::FutureExt;
-use futures::StreamExt;
-use futures::TryFutureExt;
+use futures::{FutureExt, StreamExt, TryFutureExt};
 use itertools::Itertools;
 use parking_lot::RwLock;
-use std::future::ready;
-use std::io::Stdout;
-use std::io::Write;
-use std::path::PathBuf;
-use tracing::info;
-use tracing::trace;
-
-use std::process::Stdio;
-use std::sync::Arc;
-use tokio::io::AsyncBufReadExt;
-use tokio::io::AsyncRead;
-use tokio::io::BufReader;
-use tracing::debug;
-use tracing::instrument;
-use tracing_subscriber::fmt::Layer;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
-pub mod qpwgraph;
-pub mod rendering;
+use process::*;
 use rendering::*;
+use std::io;
+use std::{
+    future::ready,
+    io::{Stdout, Write},
+    path::PathBuf,
+    process::Stdio,
+    sync::Arc,
+};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use tracing::{debug, info, instrument, trace};
+use tracing_subscriber::{fmt::Layer, prelude::*, EnvFilter};
+use tui::{
+    backend::{Backend, CrosstermBackend},
+    layout::{Constraint, Direction, Layout},
+    widgets::{Block, Borders},
+    Frame, Terminal,
+};
+use utils::*;
+
+pub mod directory_shenanigans;
+mod process;
+pub mod qpwgraph;
+pub mod reaper;
+pub mod rendering;
+mod state;
+pub mod utils;
+pub mod video_capture;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ProcessEvent {
@@ -41,30 +50,8 @@ pub enum ProcessEvent {
 
 type ProcessEventBus = tokio::sync::mpsc::UnboundedSender<ProcessEvent>;
 
-pub mod directory_shenanigans;
-mod process;
-pub mod utils;
-use process::*;
-use utils::*;
-pub mod reaper;
-pub mod video_capture;
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use std::io;
-use tui::{
-    backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, Borders},
-    Frame, Terminal,
-};
-
 #[derive(Debug, Clone, derive_more::Display, derive_more::FromStr, derive_more::AsRef)]
 pub struct ProjectName(String);
-
-mod state;
 
 pub type ProjectTime = chrono::DateTime<chrono::Local>;
 
@@ -81,7 +68,7 @@ fn bounded_command(path: &str) -> tokio::process::Command {
 fn setup_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     EnvFilter::try_from_default_env().ok().map(|env_filter| {
         let file_appender =
-            tracing_appender::rolling::daily("./", format!("{}.txt", clap::crate_name!()));
+            tracing_appender::rolling::daily(".", format!("{}.txt", clap::crate_name!()));
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
         tracing_subscriber::registry()
@@ -95,8 +82,14 @@ fn setup_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     })
 }
 
+#[derive(Debug, Clone, derive_more::FromStr, derive_more::AsRef)]
+pub struct SessionsDirectory(ExistingDirectory);
+
 #[derive(Args)]
 pub struct MainConfig {
+    /// specify base directory for all sessions
+    #[arg(long, default_value = "/mnt/md0/manual-backup/reaper-sessions")]
+    sessions_directory: SessionsDirectory,
     /// Project name to create
     #[arg(long)]
     project_name: ProjectName,
@@ -171,21 +164,28 @@ async fn run_app_with_ui(
         template,
         reaper_web_base_url,
         video_device,
+        sessions_directory,
     }: MainConfig,
 ) -> Result<()> {
-    state::StudioState::new(project_name, template, reaper_web_base_url, video_device)
-        .and_then(|state| {
-            enable_terminal_backend().and_then(|mut terminal| async move {
-                ready(run_app(&mut terminal, state).await)
-                    .then(|app_result| {
-                        disable_terminal_backend(terminal)
-                            .map(move |term_result| app_result.and_then(move |_| term_result))
-                    })
-                    .await
-            })
+    state::StudioState::new(
+        sessions_directory,
+        project_name,
+        template,
+        reaper_web_base_url,
+        video_device,
+    )
+    .and_then(|state| {
+        enable_terminal_backend().and_then(|mut terminal| async move {
+            ready(run_app(&mut terminal, state).await)
+                .then(|app_result| {
+                    disable_terminal_backend(terminal)
+                        .map(move |term_result| app_result.and(term_result))
+                })
+                .await
         })
-        .then(|res| tokio::time::sleep(tokio::time::Duration::from_millis(100)).map(|_| res))
-        .await
+    })
+    .then(|res| tokio::time::sleep(tokio::time::Duration::from_millis(100)).map(|_| res))
+    .await
 }
 
 pub const CLEANUP_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
@@ -233,7 +233,7 @@ async fn app_main() -> Result<()> {
                         let (children, devices): (Vec<_>, Vec<_>) = ready.into_iter().unzip();
                         wait_for_accept(format!(
                             "available devices: {:?}",
-                            devices.into_iter().map(|device| device).collect_vec()
+                            devices.into_iter().collect_vec()
                         ))
                         .map_ok(move |_| children)
                     })
@@ -322,6 +322,7 @@ async fn run_app<B: Backend>(
         if let Ok(ev) = ev {
             trace!(?ev, "new event");
 
+            #[allow(clippy::single_match)]
             match ev {
                 AppEvent::Terminal(event) => match event {
                     Event::Key(key) => match key.code {
@@ -329,10 +330,10 @@ async fn run_app<B: Backend>(
                         _ => {}
                     },
                     Event::FocusGained => redraw(),
+                    Event::Resize(_, _) => redraw(),
                     Event::FocusLost => {}
                     Event::Mouse(_) => {}
                     Event::Paste(_) => {}
-                    Event::Resize(_, _) => redraw(),
                 },
                 AppEvent::StateUpdated => redraw(),
             }

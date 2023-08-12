@@ -34,6 +34,7 @@ pub mod reaper_web_client;
 impl ReaperInstance {
     #[instrument(ret, err)]
     pub async fn new(
+        sessions_directory: SessionsDirectory,
         project_name: ProjectName,
         template: PathBuf,
         notify: ProcessEventBus,
@@ -41,7 +42,7 @@ impl ReaperInstance {
     ) -> Result<Self> {
         let process_path = "reaper";
 
-        ready(project_directory(&project_name))
+        ready(project_directory(sessions_directory, &project_name))
             .and_then(|project_directory| {
                 ready(
                     bounded_command(process_path)
@@ -123,12 +124,13 @@ impl RenderToTerm for TransportResponse {
             .map(ToOwned::to_owned)
             .map(|line| Spans::from(Span::styled(line, Style::default().fg(color))))
             .collect_vec();
-        Ok(f.render_widget(
+        f.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
                 .block(Block::default().borders(Borders::ALL).title("Reaper state")),
             rect,
-        ))
+        );
+        Ok(())
     }
 }
 
@@ -140,13 +142,16 @@ impl<T: RenderToTerm> RenderToTerm for Result<T, eyre::Report> {
     ) -> Result<()> {
         match self {
             Ok(v) => v.render_to_term(f, rect),
-            Err(m) => Ok(f.render_widget(
-                Paragraph::new(Text::from(Spans::from(vec![Span::styled(
-                    format!("{m:?}"),
-                    Style::default().fg(Color::Red),
-                )]))),
-                rect,
-            )),
+            Err(m) => {
+                f.render_widget(
+                    Paragraph::new(Text::from(Spans::from(vec![Span::styled(
+                        format!("{m:?}"),
+                        Style::default().fg(Color::Red),
+                    )]))),
+                    rect,
+                );
+                Ok(())
+            }
         }
     }
 }

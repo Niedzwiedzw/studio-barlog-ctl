@@ -64,7 +64,7 @@ impl StdioWatcher {
             }
         })
         .abort_on_drop();
-        let _ = self.watcher.insert(watcher);
+        self.watcher = Some(watcher);
         self
     }
 }

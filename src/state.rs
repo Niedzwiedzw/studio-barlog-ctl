@@ -12,6 +12,7 @@ pub struct StudioState {
     reaper: ReaperInstance,
     qpwgraph: QpwgraphInstance,
     ffmpeg: FfmpegInstance,
+    space_available: SpaceAvailableWatcher,
 }
 
 mod dynamic_template {
@@ -117,7 +118,7 @@ mod dynamic_template {
     }
 
     pub fn with_video_track(template_path: PathBuf, video_path: PathBuf) -> Result<PathBuf> {
-        std::fs::read_to_string(&template_path)
+        std::fs::read_to_string(template_path)
             .wrap_err("reading original")
             .and_then(|original| {
                 ReaperProject::parse_from_str(&original).wrap_err("parsing original")
@@ -136,6 +137,7 @@ mod dynamic_template {
 
 impl StudioState {
     pub async fn new(
+        sessions_directory: SessionsDirectory,
         project_name: ProjectName,
         template: PathBuf,
         reaper_web_base_url: reqwest::Url,
@@ -146,12 +148,18 @@ impl StudioState {
             .await
             .wrap_err("Spawning qpwgraph")?;
 
-        let ffmpeg = FfmpegInstance::new(video_device, project_name.clone(), notify.clone())
-            .map(|v| v.wrap_err("spawning ffmpeg"))
-            .await?;
+        let ffmpeg = FfmpegInstance::new(
+            sessions_directory.clone(),
+            video_device,
+            project_name.clone(),
+            notify.clone(),
+        )
+        .map(|v| v.wrap_err("spawning ffmpeg"))
+        .await?;
         let template_with_video =
             dynamic_template::with_video_track(template, ffmpeg.video_file_path.clone())?;
         let reaper = crate::reaper::ReaperInstance::new(
+            sessions_directory,
             project_name.clone(),
             template_with_video,
             notify.clone(),
