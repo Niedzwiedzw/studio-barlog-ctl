@@ -43,7 +43,6 @@ type ProcessEventBus = tokio::sync::mpsc::UnboundedSender<ProcessEvent>;
 
 pub mod directory_shenanigans;
 mod process;
-pub mod reaper_save_file_parser;
 pub mod utils;
 use process::*;
 use utils::*;
