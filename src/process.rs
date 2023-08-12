@@ -8,6 +8,12 @@ use tui::{
 
 use super::*;
 
+pub fn app_interval(duration: tokio::time::Duration) -> tokio::time::Interval {
+    let mut interval = tokio::time::interval(duration);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    interval
+}
+
 #[derive(Debug, Clone)]
 pub struct StdioMessage {
     pub time: ProjectTime,

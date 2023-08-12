@@ -38,6 +38,7 @@ mod process;
 pub mod qpwgraph;
 pub mod reaper;
 pub mod rendering;
+pub mod space_available_watcher;
 mod state;
 pub mod utils;
 pub mod video_capture;

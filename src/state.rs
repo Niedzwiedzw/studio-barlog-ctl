@@ -1,11 +1,7 @@
-use tokio_stream::wrappers::UnboundedReceiverStream;
-use tui::{
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    text::Span,
-};
-
 use super::*;
+use crate::space_available_watcher::SpaceAvailableWatcher;
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use tui::layout::Rect;
 
 pub struct StudioState {
     pub wake_up: Option<UnboundedReceiverStream<ProcessEvent>>,
@@ -156,6 +152,9 @@ impl StudioState {
         )
         .map(|v| v.wrap_err("spawning ffmpeg"))
         .await?;
+        let space_available =
+            SpaceAvailableWatcher::new(sessions_directory.as_ref().as_ref().to_owned());
+
         let template_with_video =
             dynamic_template::with_video_track(template, ffmpeg.video_file_path.clone())?;
         let reaper = crate::reaper::ReaperInstance::new(
@@ -168,6 +167,7 @@ impl StudioState {
         .map(|v| v.wrap_err("starting reaper"))
         .await?;
         Ok(Self {
+            space_available,
             wake_up: Some(UnboundedReceiverStream::new(wake_up)),
             reaper,
             qpwgraph,
@@ -187,6 +187,7 @@ impl crate::rendering::RenderToTerm for StudioState {
             reaper,
             qpwgraph,
             ffmpeg,
+            space_available,
         } = self;
         let [header, body]: [Rect; 2] = layout!(Layout::default()
             .direction(Direction::Vertical)
@@ -201,17 +202,7 @@ impl crate::rendering::RenderToTerm for StudioState {
             ])
             .split(body));
 
-        frame.render_widget(
-            Block::default()
-                .title(Span::styled(
-                    clap::crate_name!(),
-                    Style::default()
-                        .fg(Color::Magenta)
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .borders(Borders::ALL),
-            header,
-        );
+        space_available.render_to_term(frame, header)?;
         qpwgraph.render_to_term(frame, qpwgraph_col)?;
         reaper.render_to_term(frame, reaper_col)?;
         ffmpeg.render_to_term(frame, ffmpeg_frame)?;

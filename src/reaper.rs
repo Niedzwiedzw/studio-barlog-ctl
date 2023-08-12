@@ -41,30 +41,33 @@ impl ReaperInstance {
         web_client_base_address: reqwest::Url,
     ) -> Result<Self> {
         let process_path = "reaper";
+        let project_directory = project_directory(sessions_directory, &project_name)?;
+        let project_file_path = project_directory
+            .as_ref()
+            .join(format!("{project_name}.rpp"));
 
-        ready(project_directory(sessions_directory, &project_name))
-            .and_then(|project_directory| {
-                ready(
-                    bounded_command(process_path)
-                        .arg("-new")
-                        .arg("-saveas")
-                        .arg(
-                            project_directory
-                                .as_ref()
-                                .join(format!("{project_name}.rpp")),
-                        )
-                        .arg("-template")
-                        .arg(&template)
-                        .arg("-nosplash")
-                        .env("PIPEWIRE_LATENCY", "128/48000")
-                        .spawn()
-                        .wrap_err("spawning process instance"),
-                )
-                .and_then(|child| child.gracefully_shutdown_on_drop())
-                .map_ok(|child| ProcessWatcher::new(process_path.to_owned(), child, notify.clone()))
-                .map_ok(RwLock::new)
-                .map_ok(Arc::new)
-            })
+        let command = {
+            let mut base = bounded_command(process_path);
+            let base_command = base.arg("-nosplash").env("PIPEWIRE_LATENCY", "128/48000");
+
+            match project_file_path.exists() {
+                true => base_command,
+                false => base_command
+                    .arg("-new")
+                    .arg("-saveas")
+                    .arg(project_file_path)
+                    .arg("-template")
+                    .arg(&template),
+            }
+            .spawn()
+            .wrap_err("spawning process instance")
+        };
+
+        ready(command)
+            .and_then(|child| child.gracefully_shutdown_on_drop())
+            .map_ok(|child| ProcessWatcher::new(process_path.to_owned(), child, notify.clone()))
+            .map_ok(RwLock::new)
+            .map_ok(Arc::new)
             .and_then(|child| {
                 reaper_web_client::ReaperWebClient::new(web_client_base_address).and_then(
                     |web_client| {
