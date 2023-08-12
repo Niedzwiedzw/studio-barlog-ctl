@@ -13,7 +13,7 @@ pub mod common_types {
 use futures::TryFutureExt;
 use itertools::Itertools;
 use reqwest::Url;
-use std::{future::ready, sync::Arc};
+use std::{future::ready, ops::Deref, sync::Arc};
 use tui::{
     layout::Rect,
     style::{Color, Style},
@@ -46,12 +46,12 @@ impl ReaperInstance {
             .as_ref()
             .join(format!("{project_name}.rpp"));
 
-        let command = {
+        let (already_exists, command) = {
             let mut base = bounded_command(process_path);
             let base_command = base.arg("-nosplash").env("PIPEWIRE_LATENCY", "128/48000");
-
-            match project_file_path.exists() {
-                true => base_command,
+            let already_exists = project_file_path.exists();
+            match already_exists {
+                true => base_command.arg(project_file_path),
                 false => base_command
                     .arg("-new")
                     .arg("-saveas")
@@ -61,22 +61,25 @@ impl ReaperInstance {
             }
             .spawn()
             .wrap_err("spawning process instance")
+            .map(|command| (already_exists, command))?
         };
 
         ready(command)
-            .and_then(|child| child.gracefully_shutdown_on_drop())
+            .then(|child| child.gracefully_shutdown_on_drop())
             .map_ok(|child| ProcessWatcher::new(process_path.to_owned(), child, notify.clone()))
             .map_ok(RwLock::new)
             .map_ok(Arc::new)
             .and_then(|child| {
+                to_owned![notify];
                 reaper_web_client::ReaperWebClient::new(web_client_base_address).and_then(
-                    |web_client| {
+                    |web_client| async move {
                         let state = Arc::new(RwLock::new(Err(eyre!("Not started"))));
                         let state_watcher = {
                             to_owned![web_client, state, notify];
                             tokio::task::spawn(async move {
-                                let mut tick =
-                                    tokio::time::interval(tokio::time::Duration::from_secs(1));
+                                let mut tick = crate::process::app_interval(
+                                    tokio::time::Duration::from_secs(1),
+                                );
                                 loop {
                                     tick.tick().await;
                                     *state.write() = web_client
@@ -90,18 +93,17 @@ impl ReaperInstance {
                             })
                         }
                         .abort_on_drop();
-                        web_client
-                            .clone()
-                            .start_reaper_recording()
-                            .map_ok(|_| child)
-                            .map(|child| {
-                                child.map(|process| Self {
-                                    process,
-                                    _web_client: web_client,
-                                    state,
-                                    _state_watcher: Arc::new(state_watcher),
-                                })
-                            })
+
+                        if !already_exists {
+                            web_client.clone().start_reaper_recording().await?;
+                        }
+
+                        Ok(Self {
+                            process: child,
+                            _web_client: web_client,
+                            state,
+                            _state_watcher: Arc::new(state_watcher),
+                        })
                     },
                 )
             })
@@ -173,5 +175,22 @@ impl RenderToTerm for ReaperInstance {
         self.process.write().render_to_term(f, logs)?;
 
         Ok(())
+    }
+}
+
+impl Drop for ReaperInstance {
+    fn drop(&mut self) {
+        use reaper_web_client::rea_request::ActionId;
+        let web_client = self._web_client.clone();
+        let process = self.process.clone();
+        tokio::task::spawn(async move {
+            let _process = process;
+            for action in [ActionId::TransportStop, ActionId::SaveProject] {
+                tracing::info!(?action, "cleaning up");
+                if let Err(message) = web_client.clone().run_single(action).await {
+                    tracing::error!(?message);
+                }
+            }
+        });
     }
 }

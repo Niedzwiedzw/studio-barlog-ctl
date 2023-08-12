@@ -230,7 +230,7 @@ impl FfmpegInstance {
                     move |process| {
                         let file_size_updater = tokio::task::spawn(async move {
                             let mut interval =
-                                tokio::time::interval(std::time::Duration::from_secs(1));
+                                crate::process::app_interval(std::time::Duration::from_secs(1));
 
                             loop {
                                 interval.tick().await;

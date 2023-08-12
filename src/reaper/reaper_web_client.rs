@@ -1,4 +1,4 @@
-use self::rea_request::{ReaRequest, ReaResponse};
+use self::rea_request::{ActionId, ReaRequest, ReaResponse};
 
 use super::*;
 /// uses barely-documented web api, it's pretty simple though
@@ -37,6 +37,16 @@ pub mod rea_request {
         Recording = 5,
         RecordPaused = 6,
     }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, strum::FromRepr)]
+    pub enum ActionId {
+        TransportRecord = 1013,
+        TransportStop = 1016,
+        SaveProject = 40026,
+        /// Item navigation: Move cursor to end of items
+        ItemNavigationMoveCursorToEndOfItems = 41174,
+    }
+
     macro_rules! from_repr {
         ($ty:ty) => {
             impl FromStr for $ty {
@@ -57,6 +67,7 @@ pub mod rea_request {
     }
     from_repr!(Playstate);
     from_repr!(ReaperBool);
+    from_repr!(ActionId);
 
     macro_rules! rea_response {
     (
@@ -91,6 +102,12 @@ pub mod rea_request {
     };
 }
 
+    impl ReaResponse for () {
+        fn from_response(_response: &str) -> Result<Self> {
+            Ok(())
+        }
+    }
+
     /// * TRANSPORT
     /// Returns a line including (note that the spaces are here for readability, there
     /// is actually only tabs between fields):
@@ -100,6 +117,13 @@ pub mod rea_request {
     pub struct Transport;
     impl ReaRequest for Transport {
         type Response = TransportResponse;
+    }
+
+    impl ReaRequest for ActionId {
+        type Response = ();
+        fn as_uri(&self) -> String {
+            (*self as isize).to_string()
+        }
     }
     rea_response! {
         #[derive(Debug, Clone)]
@@ -150,28 +174,6 @@ impl ReaperWebClient {
         .wrap_err_with(|| format!("performing reaper request: {}", std::any::type_name::<R>()))
     }
 
-    #[instrument(skip(self), level = "info", ret, err)]
-    pub async fn run_command(self: Arc<Self>, commands: &[&str]) -> Result<()> {
-        ready(
-            self.base_addr
-                .join(&format!(
-                    "_/{commands};",
-                    commands = commands.iter().map(|v| v.to_string()).join(";")
-                ))
-                .wrap_err("invalid url"),
-        )
-        .and_then(|url| {
-            self.client
-                .get(url)
-                .send()
-                .map(|r| r.wrap_err("sending command request"))
-                .and_then(|res| ready(res.error_for_status().wrap_err("invalid status")))
-                .map_ok(|_| ())
-                .map(|v| v.wrap_err("performing request: {url}"))
-        })
-        .await
-    }
-
     async fn is_alive(self: Arc<Self>) -> Result<Arc<Self>> {
         self.clone()
             .run_single(rea_request::Transport)
@@ -197,6 +199,6 @@ impl ReaperWebClient {
         bail!("healthcheck failed: {last_err:?}")
     }
     pub async fn start_reaper_recording(self: Arc<Self>) -> Result<()> {
-        self.run_command(&["1013"]).await
+        self.run_single(ActionId::TransportRecord).await
     }
 }
