@@ -42,7 +42,7 @@ use super::*;
 #[derive(Debug)]
 pub struct FfmpegInstance {
     process: Arc<RwLock<ProcessWatcher>>,
-    video_file_path: PathBuf,
+    pub video_file_path: PathBuf,
     _file_size_updater: AbortOnDrop<()>,
 }
 

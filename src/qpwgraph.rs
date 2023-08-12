@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use super::*;
-use crate::directory_shenanigans::{home_dir, temp_path};
+use crate::directory_shenanigans::{home_dir, temp_home_path};
 
 #[derive(Debug, Clone)]
 pub struct QpwgraphInstance {
@@ -13,7 +13,7 @@ impl QpwgraphInstance {
     #[instrument(ret, err)]
     pub async fn new(notify: ProcessEventBus) -> Result<Self> {
         let process_name = "qpwgraph".to_owned();
-        ready(home_dir().zip(temp_path()))
+        ready(home_dir().zip(temp_home_path("qpwgraph-reaper-generated-session.qpwgraph")))
             .and_then(|(home_dir, temp_path)| {
                 tokio::fs::write(temp_path.clone(), Self::CONFIG.as_bytes())
                     .map(|v| v.wrap_err("writing config"))

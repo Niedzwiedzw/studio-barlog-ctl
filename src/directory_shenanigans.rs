@@ -8,8 +8,8 @@ pub fn home_dir() -> Result<PathBuf> {
 }
 
 /// qpwgraph has a bug so the file must be persistent...
-pub fn temp_path() -> Result<PathBuf> {
-    home_dir().map(|parent| parent.join("qpwgraph-reaper-generated-session.qpwgraph"))
+pub fn temp_home_path(name: &str) -> Result<PathBuf> {
+    home_dir().map(|parent| parent.join(name))
 }
 
 #[derive(Debug, Clone)]
