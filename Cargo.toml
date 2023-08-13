@@ -19,9 +19,9 @@ enigo = "0.1.2"
 eyre = "0.6.8"
 future-utils = "0.12.1"
 futures = "0.3.28"
-glib = { version = "0.18.1", features = ["v2_78"] }
-gstreamer = { version = "0.21.0", features = ["serde", "serde_bytes", "v1_24"] }
-gstreamer-app = "0.21.0"
+# glib = { version = "0.18.1", features = ["v2_78"] }
+gstreamer = { version = "0.21.0", features = ["serde", "serde_bytes", "v1_22"] }
+# gstreamer-app = "0.21.0"
 inquire = "0.6.2"
 itertools = "0.11.0"
 nix = "0.26.2"

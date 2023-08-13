@@ -1,6 +1,7 @@
-use std::{collections::HashSet, future::ready, process::Output};
-
+use super::*;
+use crate::directory_shenanigans::{project_directory, ExistingDirectoryExt};
 use once_cell::sync::Lazy;
+use std::{collections::HashSet, future::ready, process::Output};
 use tokio::process::{Child, Command};
 use tui::{
     layout::Rect,
@@ -8,10 +9,7 @@ use tui::{
     text::Span,
     widgets::{Paragraph, Wrap},
 };
-
-use crate::directory_shenanigans::{project_directory, ExistingDirectoryExt};
-
-use super::*;
+pub mod gstreamer_process;
 
 /// uses ffmpeg
 ///

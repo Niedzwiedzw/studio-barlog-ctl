@@ -176,12 +176,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1181e1e0d1fce796a03db1ae795d67167da795f9cf4a39c37589e85ef57f26d3"
 
 [[package]]
-name = "atomic_refcell"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79d6dc922a2792b006573f60b2648076355daeae5ce9cb59507e5908c9625d31"
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1447,61 +1441,6 @@ dependencies = [
  "serde_bytes",
  "smallvec 1.11.0",
  "thiserror",
-]
-
-[[package]]
-name = "gstreamer-app"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6da0a8e5671d836ac70741dff0a3e7688ec9ac7ab8dc62c3135dece85df63d4"
-dependencies = [
- "futures-core",
- "futures-sink",
- "glib",
- "gstreamer",
- "gstreamer-app-sys",
- "gstreamer-base",
- "libc",
-]
-
-[[package]]
-name = "gstreamer-app-sys"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bb093f39bd9b3d0c4ef8f1c4d46028d35bce033f9bda1a0449e21ef17349e03"
-dependencies = [
- "glib-sys",
- "gstreamer-base-sys",
- "gstreamer-sys",
- "libc",
- "system-deps",
-]
-
-[[package]]
-name = "gstreamer-base"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fe38a6d5c1e516ce3fd6069e972a540d315448ed69fdadad739e6c6c6eb2a01"
-dependencies = [
- "atomic_refcell",
- "cfg-if 1.0.0",
- "glib",
- "gstreamer",
- "gstreamer-base-sys",
- "libc",
-]
-
-[[package]]
-name = "gstreamer-base-sys"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88b9c029583ed61fa5258076a42df91732dc7f5582044ea7ee66a721641e6af4"
-dependencies = [
- "glib-sys",
- "gobject-sys",
- "gstreamer-sys",
- "libc",
- "system-deps",
 ]
 
 [[package]]
@@ -3369,9 +3308,7 @@ dependencies = [
  "eyre",
  "future-utils",
  "futures 0.3.28",
- "glib",
  "gstreamer",
- "gstreamer-app",
  "inquire",
  "itertools 0.11.0",
  "nix",
