@@ -219,14 +219,16 @@ async fn app_main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::ShowVideos => {
-            let _children = ready(VideoDevice::all())
-                .and_then(|videos| {
+            let devices = video_capture::list_devices().await?;
+            let _children = ready(devices)
+                .then(|videos| {
                     futures::future::join_all(videos.iter().cloned().map(
-                        |video_device| async move {
-                            present_video_device(video_device.clone())
+                        |detailed_video_device| async move {
+                            tracing::info!(?detailed_video_device);
+                            present_video_device(detailed_video_device.video_device.clone())
                                 .await
                                 .wrap_err_with(move || {
-                                    format!("spawning ffplay for {video_device:?}")
+                                    format!("spawning ffplay for {detailed_video_device:?}")
                                 })
                         },
                     ))
@@ -265,6 +267,7 @@ async fn app_main() -> Result<()> {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
     let _guard = setup_tracing();
+    color_eyre::install().ok();
 
     // create app and run it
     let res = app_main().await;

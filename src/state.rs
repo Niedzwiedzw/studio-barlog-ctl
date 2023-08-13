@@ -150,7 +150,7 @@ impl StudioState {
             project_name.clone(),
             notify.clone(),
         )
-        .map(|v| v.wrap_err("spawning ffmpeg"))
+        .map(|v| v.wrap_err("spawning video recorder"))
         .await?;
         let space_available =
             SpaceAvailableWatcher::new(sessions_directory.as_ref().as_ref().to_owned());

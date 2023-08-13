@@ -1,4 +1,4 @@
-use std::{collections::HashSet, future::ready, process::Output, str::FromStr};
+use std::{collections::HashSet, future::ready, process::Output};
 
 use once_cell::sync::Lazy;
 use tokio::process::{Child, Command};
@@ -42,7 +42,7 @@ use super::*;
 #[derive(Debug)]
 pub struct FfmpegInstance {
     process: Arc<RwLock<ProcessWatcher>>,
-    preview_process: Arc<RwLock<ProcessWatcher>>,
+    preview_process: Arc<RwLock<Result<ProcessWatcher>>>,
     pub video_file_path: PathBuf,
     _file_size_updater: AbortOnDrop<()>,
 }
@@ -71,20 +71,21 @@ impl VideoDevice {
     }
 
     pub fn new(value: &str) -> Result<Self> {
-        Self::all()
-            .wrap_err("unable to read video devices")
-            .and_then(|devices| {
-                PathBuf::from_str(value)
-                    .wrap_err("not a valid path")
-                    .map(Self)
-                    .and_then(|valid| {
-                        devices
-                            .contains(&valid)
-                            .then_some(valid)
-                            .ok_or_else(|| eyre!("value not in {devices:?}"))
-                    })
-            })
+        value.parse().wrap_err("invalid path").map(Self)
     }
+
+    // pub fn new_checked(value: &str) -> Result<Self> {
+    //     Self::all()
+    //         .wrap_err("unable to read video devices")
+    //         .and_then(|devices| {
+    //             Self::new(value).and_then(|valid| {
+    //                 devices
+    //                     .contains(&valid)
+    //                     .then(|| valid.clone())
+    //                     .ok_or_else(|| eyre!("device {valid:?} not in {devices:?}"))
+    //             })
+    //         })
+    // }
 }
 
 impl std::fmt::Display for VideoDevice {
@@ -159,23 +160,26 @@ impl OutputExt for Output {
     }
 }
 
-#[derive(Hash, Debug, PartialEq, Eq)]
+#[derive(Hash, Debug, PartialEq, Eq, Clone)]
 pub struct DetailedVideoDevice {
-    video_device: VideoDevice,
-    details: String,
+    pub video_device: VideoDevice,
+    pub details: String,
 }
 
+#[tracing::instrument(ret, err, level = "DEBUG")]
 pub async fn list_devices() -> Result<Vec<DetailedVideoDevice>> {
+    #[tracing::instrument(ret, err, level = "DEBUG")]
     fn parse_section(section: &str) -> Result<Vec<DetailedVideoDevice>> {
         section
             .split_once('\n')
             .into_iter()
             .flat_map(|(header, devices)| {
+                tracing::debug!(%header, %devices);
                 devices
                     .split('\n')
                     .filter_map(|v| {
                         let v = v.trim();
-                        v.is_empty().then_some(v)
+                        (!v.is_empty()).then_some(v)
                     })
                     .map(|device| {
                         VideoDevice::new(device).map(|video_device| DetailedVideoDevice {
@@ -186,19 +190,21 @@ pub async fn list_devices() -> Result<Vec<DetailedVideoDevice>> {
             })
             .collect()
     }
-    Command::new("v412-ctl")
+    Command::new("v4l2-ctl")
         .arg("--list-devices")
         .output()
         .await
         .wrap_err("reading command output")
         .and_then(|output| output.success_output())
-        .and_then(|SuccessOutput { stdout, stderr: _ }| {
+        .and_then(|SuccessOutput { stdout, stderr }| {
+            tracing::debug!(%stdout, %stderr, "success output");
             stdout
                 .split("\n\n")
                 .map(parse_section)
                 .collect::<Result<Vec<_>>>()
                 .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
         })
+        .wrap_err("reading current video devices")
 }
 
 #[derive(Debug)]
@@ -229,6 +235,22 @@ fn loopback_label(device: &VideoDevice) -> Result<String> {
 pub async fn get_or_create_loopback_device_for(
     for_video_device: VideoDevice,
 ) -> Result<LoopbackDevice> {
+    // if let Err() =
+    // Command::new("sudo")
+    //     .stdin(Stdio::inherit())
+    //     .stdout(Stdio::inherit())
+    //     .stderr(Stdio::inherit())
+    //     .arg("sudo")
+    //     .arg("modprobe")
+    //     .arg("v4l2loopback")
+    //     .arg(format!("video_nr={device_number}"))
+    //     .arg(format!("card_label={loopback_label}"))
+    //     .arg("exclusive_caps=1")
+    //     .output()
+    //     .await
+    //     .wrap_err("generating loopback device")
+    //     .and_then(|out| out.success_output())?;
+    let after = list_devices().await?.into_iter().collect::<HashSet<_>>();
     let before = list_devices().await?.into_iter().collect::<HashSet<_>>();
     let device_number = video_nr_from_video(&for_video_device)?;
     let loopback_label = loopback_label(&for_video_device)?;
@@ -253,21 +275,21 @@ pub async fn get_or_create_loopback_device_for(
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .arg("sudo")
         .arg("modprobe")
         .arg("v4l2loopback")
         .arg(format!("video_nr={device_number}"))
         .arg(format!("card_label={loopback_label}"))
-        .arg("exclusive_caps=1")
+        // .arg("exclusive_caps=1")
         .output()
         .await
         .wrap_err("generating loopback device")
         .and_then(|out| out.success_output())?;
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     let after = list_devices().await?.into_iter().collect::<HashSet<_>>();
     after
         .difference(&before)
         .find_map(to_matching_loopback_device)
-        .ok_or_else(|| eyre!("couldn't create the video device"))
+        .ok_or_else(|| eyre!("video loopback device wasn't created"))
         .map(as_loopback_device)
 }
 
@@ -285,7 +307,8 @@ pub async fn ffplay_preview(video_device: VideoDevice) -> Result<Child> {
     {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
     }
-    apply_video_read_args(&mut command)
+    // apply_video_read_args(&mut command)
+    command
         .args([arg!(video_device)])
         .spawn()
         .wrap_err_with(|| format!("spawning ffplay instance for {video_device:?}"))
@@ -338,14 +361,21 @@ impl FfmpegInstance {
         let process_path = "ffmpeg".to_owned();
         try_enable_low_latency_for_magewell(video_device.clone()).await;
 
-        let preview_process = ffplay_preview(loopback_device)
+        let preview_process = ffplay_preview(loopback_device.clone())
             .map_err(|v| v.wrap_err("spawning ffplay"))
-            .and_then(|c| c.gracefully_shutdown_on_drop())
+            .and_then(|c| {
+                c.gracefully_shutdown_on_drop()
+                    .map_err(|e| e.wrap_err("making sure it doesn't quit"))
+            })
             .map_ok(|child| ProcessWatcher::new("ffplay".to_owned(), child, notify.clone()))
-            .await
-            .wrap_err("creating preview window")
+            .map_err(|v| {
+                v.wrap_err(format!(
+                    "creating preview window for device {loopback_device}"
+                ))
+            })
             .map(RwLock::new)
-            .map(Arc::new)?;
+            .map(Arc::new)
+            .await;
         ready(video_file_path(sessions_directory, &project_name))
             .and_then(|video_file_path| {
                 let mut command = bounded_command(&process_path);
