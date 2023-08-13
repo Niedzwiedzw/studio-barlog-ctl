@@ -2,7 +2,7 @@
 use self::{qpwgraph::*, reaper::*, video_capture::*};
 use clap::{Args, Parser, Subcommand};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -168,12 +168,13 @@ async fn run_app_with_ui(
         sessions_directory,
     }: MainConfig,
 ) -> Result<()> {
+    let loopback_device = get_or_create_loopback_device_for(video_device).await?;
     state::StudioState::new(
         sessions_directory,
         project_name,
         template,
         reaper_web_base_url,
-        video_device,
+        loopback_device,
     )
     .and_then(|state| {
         enable_terminal_backend().and_then(|mut terminal| async move {
@@ -327,7 +328,13 @@ async fn run_app<B: Backend>(
             match ev {
                 AppEvent::Terminal(event) => match event {
                     Event::Key(key) => match key.code {
-                        KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('q')
+                            if key
+                                .modifiers
+                                .contains(KeyModifiers::ALT & KeyModifiers::SHIFT) =>
+                        {
+                            return Ok(())
+                        }
                         _ => {}
                     },
                     Event::FocusGained => redraw(),

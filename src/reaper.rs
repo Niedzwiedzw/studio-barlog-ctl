@@ -13,7 +13,7 @@ pub mod common_types {
 use futures::TryFutureExt;
 use itertools::Itertools;
 use reqwest::Url;
-use std::{future::ready, ops::Deref, sync::Arc};
+use std::{future::ready, sync::Arc};
 use tui::{
     layout::Rect,
     style::{Color, Style},

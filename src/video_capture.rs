@@ -1,4 +1,4 @@
-use std::{future::ready, str::FromStr};
+use std::{collections::HashSet, future::ready, process::Output, str::FromStr};
 
 use once_cell::sync::Lazy;
 use tokio::process::{Child, Command};
@@ -42,6 +42,7 @@ use super::*;
 #[derive(Debug)]
 pub struct FfmpegInstance {
     process: Arc<RwLock<ProcessWatcher>>,
+    preview_process: Arc<RwLock<ProcessWatcher>>,
     pub video_file_path: PathBuf,
     _file_size_updater: AbortOnDrop<()>,
 }
@@ -69,7 +70,7 @@ impl VideoDevice {
             })
     }
 
-    pub fn new(value: &str) -> Result<Self, String> {
+    pub fn new(value: &str) -> Result<Self> {
         Self::all()
             .wrap_err("unable to read video devices")
             .and_then(|devices| {
@@ -83,7 +84,6 @@ impl VideoDevice {
                             .ok_or_else(|| eyre!("value not in {devices:?}"))
                     })
             })
-            .map_err(|e| format!("{e:?}"))
     }
 }
 
@@ -130,6 +130,147 @@ fn apply_video_read_args(command: &mut Command) -> &mut Command {
         .args(["-video_size", arg!(VIDEO_SIZE)])
 }
 
+#[derive(Debug, Clone)]
+pub struct SuccessOutput {
+    pub stdout: String,
+    pub stderr: String,
+}
+
+pub trait OutputExt {
+    fn success_output(self) -> Result<SuccessOutput>;
+}
+
+impl OutputExt for Output {
+    fn success_output(self) -> Result<SuccessOutput> {
+        let output = SuccessOutput {
+            stdout: String::from_utf8_lossy(&self.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&self.stderr).to_string(),
+        };
+        self.status
+            .success()
+            .then(|| output.clone())
+            .ok_or_else(|| eyre!("bad status: {}", self.status))
+            .wrap_err_with(|| {
+                format!(
+                    "output:\nstdout: {}\nstderr: {}\n",
+                    output.stdout, output.stderr
+                )
+            })
+    }
+}
+
+#[derive(Hash, Debug, PartialEq, Eq)]
+pub struct DetailedVideoDevice {
+    video_device: VideoDevice,
+    details: String,
+}
+
+pub async fn list_devices() -> Result<Vec<DetailedVideoDevice>> {
+    fn parse_section(section: &str) -> Result<Vec<DetailedVideoDevice>> {
+        section
+            .split_once('\n')
+            .into_iter()
+            .flat_map(|(header, devices)| {
+                devices
+                    .split('\n')
+                    .filter_map(|v| {
+                        let v = v.trim();
+                        v.is_empty().then_some(v)
+                    })
+                    .map(|device| {
+                        VideoDevice::new(device).map(|video_device| DetailedVideoDevice {
+                            video_device,
+                            details: header.trim().to_string(),
+                        })
+                    })
+            })
+            .collect()
+    }
+    Command::new("v412-ctl")
+        .arg("--list-devices")
+        .output()
+        .await
+        .wrap_err("reading command output")
+        .and_then(|output| output.success_output())
+        .and_then(|SuccessOutput { stdout, stderr: _ }| {
+            stdout
+                .split("\n\n")
+                .map(parse_section)
+                .collect::<Result<Vec<_>>>()
+                .map(|v| v.into_iter().flatten().collect::<Vec<_>>())
+        })
+}
+
+#[derive(Debug)]
+pub struct LoopbackDevice {
+    pub loopback_device: VideoDevice,
+    pub for_device: VideoDevice,
+}
+
+fn video_nr_from_video(device: &VideoDevice) -> Result<i32> {
+    device
+        .0
+        .display()
+        .to_string()
+        .chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .collect::<String>()
+        .parse()
+        .wrap_err("extracting video device number")
+}
+
+fn loopback_label(device: &VideoDevice) -> Result<String> {
+    video_nr_from_video(device)
+        .map(|number| format!("loopback-device-for-{number}"))
+        .wrap_err("generating loopback label")
+}
+
+/// sudo modprobe v4l2loopback video_nr=1 card_label=video-loopback-1 exclusive_caps=1
+pub async fn get_or_create_loopback_device_for(
+    for_video_device: VideoDevice,
+) -> Result<LoopbackDevice> {
+    let before = list_devices().await?.into_iter().collect::<HashSet<_>>();
+    let device_number = video_nr_from_video(&for_video_device)?;
+    let loopback_label = loopback_label(&for_video_device)?;
+    let as_loopback_device = |device| LoopbackDevice {
+        loopback_device: device,
+        for_device: for_video_device,
+    };
+
+    let to_matching_loopback_device =
+        |DetailedVideoDevice {
+             video_device,
+             details,
+         }: &DetailedVideoDevice| {
+            details
+                .contains(&loopback_label)
+                .then(|| video_device.clone())
+        };
+    if let Some(already_exists) = before.iter().find_map(to_matching_loopback_device) {
+        return Ok(as_loopback_device(already_exists));
+    }
+    Command::new("sudo")
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .arg("sudo")
+        .arg("modprobe")
+        .arg("v4l2loopback")
+        .arg(format!("video_nr={device_number}"))
+        .arg(format!("card_label={loopback_label}"))
+        .arg("exclusive_caps=1")
+        .output()
+        .await
+        .wrap_err("generating loopback device")
+        .and_then(|out| out.success_output())?;
+    let after = list_devices().await?.into_iter().collect::<HashSet<_>>();
+    after
+        .difference(&before)
+        .find_map(to_matching_loopback_device)
+        .ok_or_else(|| eyre!("couldn't create the video device"))
+        .map(as_loopback_device)
+}
+
 pub async fn ffplay_preview(video_device: VideoDevice) -> Result<Child> {
     try_enable_low_latency_for_magewell(video_device.clone()).await;
     let mut command = bounded_command(FFPLAY_PATH);
@@ -152,6 +293,7 @@ pub async fn ffplay_preview(video_device: VideoDevice) -> Result<Child> {
 
 pub static MWCAP_CONTROL_LOCK: Lazy<tokio::sync::Mutex<()>> = Lazy::new(Default::default);
 
+#[tracing::instrument]
 pub async fn try_enable_low_latency_for_magewell(video_device: VideoDevice) {
     if let Err(magewell_error) = enable_low_latency_for_magewell(video_device).await {
         tracing::error!(?magewell_error);
@@ -169,25 +311,15 @@ pub async fn enable_low_latency_for_magewell(video_device: VideoDevice) -> Resul
         .output()
         .await
         .wrap_err("spawning command")
+        .and_then(|output| output.success_output())
         .and_then(|output| {
-            let out_text = format!(
-                "stdout: {}\nstderr: {}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr),
-            );
-            output
-                .status
-                .success()
-                .then_some(out_text.clone())
-                .ok_or_else(|| eyre!("bad status: {}", output.status))
-                .wrap_err_with(|| format!("output:\n\n{out_text}"))
-        })
-        .and_then(|output| {
-            output
-                .contains("successfully")
+            const SUCCESS_MARKER: &str = "successfully";
+            [output.stdout.clone(), output.stderr.clone()]
+                .join(" ")
+                .contains(SUCCESS_MARKER)
                 .then_some(())
-                .ok_or_else(|| eyre!("output text does not contain word 'successfully'"))
-                .wrap_err_with(|| format!("checking output: {output}"))
+                .ok_or_else(|| eyre!("output text does not contain word '{SUCCESS_MARKER}'"))
+                .wrap_err_with(|| format!("checking output: {output:?}"))
         })
         .wrap_err_with(|| format!("enabling low latency mode for {video_device:?}"))
 }
@@ -196,12 +328,24 @@ impl FfmpegInstance {
     #[instrument(ret, err)]
     pub async fn new(
         sessions_directory: SessionsDirectory,
-        video_device: VideoDevice,
+        LoopbackDevice {
+            loopback_device,
+            for_device: video_device,
+        }: LoopbackDevice,
         project_name: ProjectName,
         notify: ProcessEventBus,
     ) -> Result<Self> {
         let process_path = "ffmpeg".to_owned();
         try_enable_low_latency_for_magewell(video_device.clone()).await;
+
+        let preview_process = ffplay_preview(loopback_device)
+            .map_err(|v| v.wrap_err("spawning ffplay"))
+            .and_then(|c| c.gracefully_shutdown_on_drop())
+            .map_ok(|child| ProcessWatcher::new("ffplay".to_owned(), child, notify.clone()))
+            .await
+            .wrap_err("creating preview window")
+            .map(RwLock::new)
+            .map(Arc::new)?;
         ready(video_file_path(sessions_directory, &project_name))
             .and_then(|video_file_path| {
                 let mut command = bounded_command(&process_path);
@@ -240,6 +384,7 @@ impl FfmpegInstance {
                         .abort_on_drop();
 
                         Self {
+                            preview_process,
                             process,
                             video_file_path,
                             _file_size_updater: file_size_updater,
@@ -269,9 +414,13 @@ impl RenderToTerm for FfmpegInstance {
         f: &mut Frame<B>,
         rect: tui::layout::Rect,
     ) -> Result<()> {
-        let [file_size_block, process_watcher_block]: [Rect; 2] = layout!(Layout::default()
+        let [file_size_block, ffmpeg_block, ffplay_block]: [Rect; 3] = layout!(Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Ratio(1, 9), Constraint::Ratio(8, 9),])
+            .constraints([
+                Constraint::Ratio(1, 9),
+                Constraint::Ratio(5, 9),
+                Constraint::Ratio(3, 9),
+            ])
             .split(rect));
         let text_block = |text: String| {
             let block = Block::default().borders(Borders::ALL).title(Span::styled(
@@ -290,9 +439,10 @@ impl RenderToTerm for FfmpegInstance {
             ),
             file_size_block,
         );
-        self.process
+        self.process.write().render_to_term(f, ffmpeg_block)?;
+        self.preview_process
             .write()
-            .render_to_term(f, process_watcher_block)?;
+            .render_to_term(f, ffplay_block)?;
         Ok(())
     }
 }

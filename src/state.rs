@@ -137,7 +137,7 @@ impl StudioState {
         project_name: ProjectName,
         template: PathBuf,
         reaper_web_base_url: reqwest::Url,
-        video_device: VideoDevice,
+        loopback_device: LoopbackDevice,
     ) -> Result<Self> {
         let (notify, wake_up) = tokio::sync::mpsc::unbounded_channel();
         let qpwgraph = crate::qpwgraph::QpwgraphInstance::new(notify.clone())
@@ -146,7 +146,7 @@ impl StudioState {
 
         let ffmpeg = FfmpegInstance::new(
             sessions_directory.clone(),
-            video_device,
+            loopback_device,
             project_name.clone(),
             notify.clone(),
         )
