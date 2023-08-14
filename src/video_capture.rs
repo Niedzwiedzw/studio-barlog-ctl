@@ -92,7 +92,7 @@ impl std::fmt::Display for VideoDevice {
     }
 }
 
-fn video_file_path(
+pub fn video_file_path(
     sessions_directory: SessionsDirectory,
     project_name: &ProjectName,
 ) -> Result<PathBuf> {

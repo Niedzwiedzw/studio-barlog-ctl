@@ -182,13 +182,12 @@ async fn run_app_with_ui(
         sessions_directory,
     }: MainConfig,
 ) -> Result<()> {
-    let loopback_device = get_or_create_loopback_device_for(video_device).await?;
     state::StudioState::new(
         sessions_directory,
         project_name,
         template,
         reaper_web_base_url,
-        loopback_device,
+        video_device,
     )
     .and_then(|state| {
         enable_terminal_backend().and_then(|mut terminal| async move {

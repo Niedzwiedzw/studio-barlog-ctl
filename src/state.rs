@@ -1,5 +1,8 @@
 use super::*;
-use crate::space_available_watcher::SpaceAvailableWatcher;
+use crate::{
+    space_available_watcher::SpaceAvailableWatcher,
+    video_capture::gstreamer_process::GstreamerInstance,
+};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tui::layout::Rect;
 
@@ -7,7 +10,8 @@ pub struct StudioState {
     pub wake_up: Option<UnboundedReceiverStream<ProcessEvent>>,
     reaper: ReaperInstance,
     qpwgraph: QpwgraphInstance,
-    ffmpeg: FfmpegInstance,
+    // ffmpeg: FfmpegInstance,
+    gstreamer: GstreamerInstance,
     space_available: SpaceAvailableWatcher,
 }
 
@@ -137,26 +141,21 @@ impl StudioState {
         project_name: ProjectName,
         template: PathBuf,
         reaper_web_base_url: reqwest::Url,
-        loopback_device: LoopbackDevice,
+        video_device: VideoDevice,
     ) -> Result<Self> {
         let (notify, wake_up) = tokio::sync::mpsc::unbounded_channel();
         let qpwgraph = crate::qpwgraph::QpwgraphInstance::new(notify.clone())
             .await
             .wrap_err("Spawning qpwgraph")?;
-
-        let ffmpeg = FfmpegInstance::new(
-            sessions_directory.clone(),
-            loopback_device,
-            project_name.clone(),
-            notify.clone(),
-        )
-        .map(|v| v.wrap_err("spawning video recorder"))
-        .await?;
+        let video_file_path = video_file_path(sessions_directory.clone(), &project_name)?;
+        let gstreamer = GstreamerInstance::new(video_device, video_file_path, notify.clone())
+            .map(|v| v.wrap_err("spawning video recorder"))
+            .await?;
         let space_available =
             SpaceAvailableWatcher::new(sessions_directory.as_ref().as_ref().to_owned());
 
         let template_with_video =
-            dynamic_template::with_video_track(template, ffmpeg.video_file_path.clone())?;
+            dynamic_template::with_video_track(template, gstreamer.video_file_path.clone())?;
         let reaper = crate::reaper::ReaperInstance::new(
             sessions_directory,
             project_name.clone(),
@@ -171,7 +170,7 @@ impl StudioState {
             wake_up: Some(UnboundedReceiverStream::new(wake_up)),
             reaper,
             qpwgraph,
-            ffmpeg,
+            gstreamer,
         })
     }
 }
@@ -186,14 +185,14 @@ impl crate::rendering::RenderToTerm for StudioState {
             wake_up: _,
             reaper,
             qpwgraph,
-            ffmpeg,
+            gstreamer,
             space_available,
         } = self;
         let [header, body]: [Rect; 2] = layout!(Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(10), Constraint::Percentage(90)].as_ref())
             .split(rect));
-        let [qpwgraph_col, reaper_col, ffmpeg_frame]: [Rect; 3] = layout!(Layout::default()
+        let [qpwgraph_col, reaper_col, gstreamer_frame]: [Rect; 3] = layout!(Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Ratio(1, 3),
@@ -205,7 +204,7 @@ impl crate::rendering::RenderToTerm for StudioState {
         space_available.render_to_term(frame, header)?;
         qpwgraph.render_to_term(frame, qpwgraph_col)?;
         reaper.render_to_term(frame, reaper_col)?;
-        ffmpeg.render_to_term(frame, ffmpeg_frame)?;
+        gstreamer.render_to_term(frame, gstreamer_frame)?;
 
         Ok(())
     }

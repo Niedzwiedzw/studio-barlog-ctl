@@ -139,6 +139,29 @@ impl RenderToTerm for TransportResponse {
     }
 }
 
+impl<T: RenderToTerm> RenderToTerm for Option<T> {
+    fn render_to_term<B: Backend>(
+        &mut self,
+        f: &mut Frame<B>,
+        rect: tui::layout::Rect,
+    ) -> Result<()> {
+        match self {
+            Some(v) => v.render_to_term(f, rect),
+            None => {
+                f.render_widget(
+                    Paragraph::new(Text::from(Spans::from(vec![Span::styled(
+                        format!(" -- inactive ({}) --", std::any::type_name::<T>()),
+                        Style::default().fg(Color::Red),
+                    )])))
+                    .wrap(Wrap { trim: false }),
+                    rect,
+                );
+                Ok(())
+            }
+        }
+    }
+}
+
 impl<T: RenderToTerm> RenderToTerm for Result<T, eyre::Report> {
     fn render_to_term<B: Backend>(
         &mut self,
@@ -152,7 +175,8 @@ impl<T: RenderToTerm> RenderToTerm for Result<T, eyre::Report> {
                     Paragraph::new(Text::from(Spans::from(vec![Span::styled(
                         format!("{m:?}"),
                         Style::default().fg(Color::Red),
-                    )]))),
+                    )])))
+                    .wrap(Wrap { trim: false }),
                     rect,
                 );
                 Ok(())

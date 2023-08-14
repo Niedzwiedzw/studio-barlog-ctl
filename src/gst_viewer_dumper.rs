@@ -28,7 +28,8 @@ impl GStreamerReaderDumper {
         let process = {
             to_owned![cancel];
             tokio::task::spawn_blocking(move || {
-                match gstreamer_process::start_stream(video_device, output_path, cancel) {
+                match gstreamer_process::low_level::start_stream(video_device, output_path, cancel)
+                {
                     Ok(_) => info!("process has finished"),
                     Err(message) => error!(?message, "bye bye"),
                 }
