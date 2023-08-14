@@ -34,6 +34,7 @@ use tui::{
 use utils::*;
 
 pub mod directory_shenanigans;
+pub mod gst_viewer_dumper;
 mod process;
 pub mod qpwgraph;
 pub mod reaper;
@@ -66,21 +67,33 @@ fn bounded_command(path: &str) -> tokio::process::Command {
     cmd
 }
 
-fn setup_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
-    EnvFilter::try_from_default_env().ok().map(|env_filter| {
-        let file_appender =
-            tracing_appender::rolling::daily(".", format!("{}.txt", clap::crate_name!()));
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+pub enum TracingKind {
+    FileBased,
+    TerminalBased,
+}
 
-        tracing_subscriber::registry()
-            .with(
-                Layer::new()
-                    .with_writer(non_blocking)
-                    .with_filter(env_filter),
-            )
-            .init();
-        guard
-    })
+fn setup_tracing(kind: TracingKind) -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    EnvFilter::try_from_default_env()
+        .ok()
+        .and_then(|env_filter| match kind {
+            TracingKind::FileBased => {
+                let file_appender =
+                    tracing_appender::rolling::daily(".", format!("{}.txt", clap::crate_name!()));
+                let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+                tracing_subscriber::registry()
+                    .with(
+                        Layer::new()
+                            .with_writer(non_blocking)
+                            .with_filter(env_filter),
+                    )
+                    .init();
+                Some(guard)
+            }
+            TracingKind::TerminalBased => {
+                tracing_subscriber::fmt().init();
+                None
+            }
+        })
 }
 
 #[derive(Debug, Clone, derive_more::FromStr, derive_more::AsRef)]
@@ -99,7 +112,7 @@ pub struct MainConfig {
     template: PathBuf,
     #[arg(long)]
     reaper_web_base_url: reqwest::Url,
-    #[arg(long, value_parser = VideoDevice::new)]
+    #[arg(long, value_parser = VideoDevice::new_checked)]
     video_device: VideoDevice,
 }
 
@@ -123,6 +136,7 @@ enum Commands {
     StartRecording(MainConfig),
     ShowVideos,
     QpwgraphOnly,
+    GstViewerDumper(gst_viewer_dumper::Args),
 }
 
 type AppTerminal = Terminal<CrosstermBackend<Stdout>>;
@@ -217,6 +231,10 @@ async fn present_video_device(
 
 async fn app_main() -> Result<()> {
     let cli = Cli::parse();
+    let _guard = setup_tracing(match cli.command {
+        Commands::StartRecording(_) => TracingKind::FileBased,
+        _ => TracingKind::TerminalBased,
+    });
     match cli.command {
         Commands::ShowVideos => {
             let devices = video_capture::list_devices().await?;
@@ -261,12 +279,16 @@ async fn app_main() -> Result<()> {
             wait_for_accept(format!("press anything to stop qpwgraph")).await?;
             Ok(())
         }
+        Commands::GstViewerDumper(args) => {
+            let viewer = gst_viewer_dumper::GStreamerReaderDumper::new(args)?;
+            viewer.wait_for_finish().await?;
+            Ok(())
+        }
     }
 }
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
-    let _guard = setup_tracing();
     color_eyre::install().ok();
 
     // create app and run it

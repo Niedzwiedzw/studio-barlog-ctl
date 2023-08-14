@@ -3308,6 +3308,7 @@ dependencies = [
  "eyre",
  "future-utils",
  "futures 0.3.28",
+ "glib",
  "gstreamer",
  "inquire",
  "itertools 0.11.0",

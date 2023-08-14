@@ -72,18 +72,18 @@ impl VideoDevice {
         value.parse().wrap_err("invalid path").map(Self)
     }
 
-    // pub fn new_checked(value: &str) -> Result<Self> {
-    //     Self::all()
-    //         .wrap_err("unable to read video devices")
-    //         .and_then(|devices| {
-    //             Self::new(value).and_then(|valid| {
-    //                 devices
-    //                     .contains(&valid)
-    //                     .then(|| valid.clone())
-    //                     .ok_or_else(|| eyre!("device {valid:?} not in {devices:?}"))
-    //             })
-    //         })
-    // }
+    pub fn new_checked(value: &str) -> Result<Self> {
+        Self::all()
+            .wrap_err("unable to read video devices")
+            .and_then(|devices| {
+                Self::new(value).and_then(|valid| {
+                    devices
+                        .contains(&valid)
+                        .then(|| valid.clone())
+                        .ok_or_else(|| eyre!("device {valid:?} not in {devices:?}"))
+                })
+            })
+    }
 }
 
 impl std::fmt::Display for VideoDevice {
@@ -248,7 +248,6 @@ pub async fn get_or_create_loopback_device_for(
     //     .await
     //     .wrap_err("generating loopback device")
     //     .and_then(|out| out.success_output())?;
-    let after = list_devices().await?.into_iter().collect::<HashSet<_>>();
     let before = list_devices().await?.into_iter().collect::<HashSet<_>>();
     let device_number = video_nr_from_video(&for_video_device)?;
     let loopback_label = loopback_label(&for_video_device)?;

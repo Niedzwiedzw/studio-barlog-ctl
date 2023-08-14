@@ -1,10 +1,10 @@
 use super::*;
 use gst::{prelude::*, ElementFactory, Pipeline};
 use gstreamer as gst;
-use std::error::Error;
+use tracing::info;
 
 #[instrument]
-fn start_stream() -> Result<()> {
+pub fn start_stream() -> Result<()> {
     // Initialize GStreamer
     gst::init().wrap_err("initializing gstreamer")?;
 
@@ -15,10 +15,10 @@ fn start_stream() -> Result<()> {
     let src = ElementFactory::make("v4l2src").build()?;
     let convert = ElementFactory::make("videoconvert").build()?;
     let format = gst::Caps::builder("video/x-raw")
-        .field("width", &1920i32)
-        .field("height", &1080i32)
-        .field("framerate", &gst::Fraction::new(30, 1))
-        .field("format", &"I420")
+        .field("width", 1920i32)
+        .field("height", 1080i32)
+        .field("framerate", gst::Fraction::new(25, 1))
+        .field("format", "I420")
         .build();
     //     .
     //     &[
@@ -49,12 +49,12 @@ fn start_stream() -> Result<()> {
     let tee = ElementFactory::make("tee").build()?;
 
     // Add elements to the pipeline
-    pipeline.add_many(&[
+    pipeline.add_many([
         &src, &convert, &filter, &encoder, &muxer, &tee, &filesink, &rtpsink,
     ])?;
 
     // Link the elements
-    gst::Element::link_many(&[&src, &convert, &filter, &encoder, &muxer, &tee])?;
+    gst::Element::link_many([&src, &convert, &filter, &encoder, &muxer, &tee])?;
 
     // Link the first branch of the tee (save to file)
     let filesinkpad = tee
@@ -78,16 +78,13 @@ fn start_stream() -> Result<()> {
     pipeline.add(&rtpqueue)?;
     let rtpmuxer = ElementFactory::make("rtpmux").build()?;
     pipeline.add(&rtpmuxer)?;
-    let udpsinkpad = rtpmuxer
-        .static_pad("sink_0")
-        .ok_or_else(|| eyre!("no sink_0"))?;
     gst::Pad::link(
         &rtpsinkpad,
         &rtppay
             .static_pad("sink")
             .ok_or_else(|| eyre!("no sink pad"))?,
     )?;
-    gst::Element::link_many(&[&rtppay, &rtpqueue, &rtpmuxer, &rtpsink])?;
+    gst::Element::link_many([&rtppay, &rtpqueue, &rtpmuxer, &rtpsink])?;
 
     // Set the pipeline to playing state
     pipeline.set_state(gst::State::Playing)?;
@@ -95,6 +92,13 @@ fn start_stream() -> Result<()> {
     // Run the main loop
     let main_loop = glib::MainLoop::new(None, false);
     main_loop.run();
+    let bus = pipeline
+        .bus()
+        .ok_or_else(|| eyre!("pipeline must have a bus"))?;
+    info!("starting to read messages");
+    for msg in bus.iter_timed(gst::ClockTime::NONE) {
+        info!(?msg, "new message");
+    }
 
     // Clean up
     pipeline.set_state(gst::State::Null)?;
