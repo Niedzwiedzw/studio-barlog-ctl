@@ -1,3 +1,4 @@
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 use super::*;
@@ -11,6 +12,7 @@ pub struct Args {
 #[derive(Debug)]
 pub struct GStreamerReaderDumper {
     pub process: AbortOnDrop<()>,
+    pub cancel: CancellationToken,
 }
 
 impl GStreamerReaderDumper {
@@ -22,15 +24,31 @@ impl GStreamerReaderDumper {
         }: Args,
     ) -> Result<Self> {
         tracing::info!("spawning gstreamer process");
-        let process = tokio::task::spawn_blocking(|| match gstreamer_process::start_stream() {
-            Ok(_) => info!("process has finished"),
-            Err(message) => error!(?message, "bye bye"),
-        })
-        .abort_on_drop();
-        Ok(Self { process })
+        let cancel = CancellationToken::new();
+        let process = {
+            to_owned![cancel];
+            tokio::task::spawn_blocking(move || {
+                match gstreamer_process::start_stream(video_device, output_path, cancel) {
+                    Ok(_) => info!("process has finished"),
+                    Err(message) => error!(?message, "bye bye"),
+                }
+            })
+            .abort_on_drop()
+        };
+        Ok(Self { process, cancel })
     }
 
+    #[tracing::instrument(ret, err, level = "INFO")]
     pub async fn wait_for_finish(self) -> Result<()> {
+        {
+            let cancel = self.cancel.clone();
+            tokio::task::spawn(async move {
+                while let Ok(()) = tokio::signal::ctrl_c().await {
+                    tracing::warn!("CTRL+C received, shutting down");
+                    cancel.cancel();
+                }
+            });
+        }
         self.process
             .await
             .map_err(eyre::Report::from)

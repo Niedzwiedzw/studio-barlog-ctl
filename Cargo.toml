@@ -22,6 +22,7 @@ futures = "0.3.28"
 glib = { version = "0.18.1", features = ["v2_76"] }
 # glib = { version = "0.18.1", features = ["v2_78"] }
 gstreamer = { version = "0.21.0", features = ["serde", "serde_bytes", "v1_22"] }
+gstreamer-video = { version = "0.21.0", features = ["serde", "v1_22"] }
 # gstreamer-app = "0.21.0"
 inquire = "0.6.2"
 itertools = "0.11.0"
@@ -47,7 +48,9 @@ serde = { version = "1.0.181", features = ["derive"] }
 strum = { version = "0.25.0", features = ["derive"] }
 tempfile = { version = "3.7.0", features = ["nightly"] }
 tokio = { version = "1.29.1", features = ["full"] }
+tokio-signal = "0.2.9"
 tokio-stream = "0.1.14"
+tokio-util = { version = "0.7.8", features = ["full"] }
 tracing = "0.1.37"
 tracing-appender = "0.2.2"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
