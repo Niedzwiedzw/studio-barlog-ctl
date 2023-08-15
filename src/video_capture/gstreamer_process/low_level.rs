@@ -4,8 +4,9 @@ use gstreamer as gst;
 use tracing::{info, warn};
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
-const FORMAT: &str = "YUY2";
+const FORMAT: &str = "YUV9";
 const FRAMERATE: &str = "25/1";
+const BITRATE: u32 = 20_000;
 
 // #[instrument(ret, err, level = "INFO")]
 // fn construct_pipeline(video_device: VideoDevice, output_file: PathBuf) -> Result<gst::Pipeline> {
@@ -107,7 +108,7 @@ pub fn start_stream(
             t. ! queue ! autovideosink
             t. ! queue
                 ! videoconvert
-                ! x264enc bitrate=8000 speed-preset=ultrafast tune=zerolatency
+                ! x264enc bitrate={BITRATE} speed-preset=ultrafast tune=zerolatency
                 ! video/x-h264
                 ! matroskamux
                 ! filesink location={output_file}
