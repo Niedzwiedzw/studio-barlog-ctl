@@ -1,10 +1,10 @@
 use super::*;
-use gst::{prelude::*, ElementFactory, Pipeline};
+use gst::prelude::*;
 use gstreamer as gst;
 use tracing::{info, warn};
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
-const FORMAT: &str = "YUV9";
+const FORMAT: &str = "YUY2";
 const FRAMERATE: &str = "25/1";
 const BITRATE: u32 = 20_000;
 

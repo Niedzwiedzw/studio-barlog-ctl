@@ -22,6 +22,7 @@ mod dynamic_template {
         low_level::{Attribute, Object, ReaperString},
         prelude::{ObjectWrapper, ReaperProject, SerializeAndDeserialize, Track},
     };
+    pub const DEFAULT_VIDEO_FILE_OFFSET: f64 = 281.820_313_303_141_7;
 
     use super::*;
     fn template_video_track() -> Result<Track> {
@@ -50,7 +51,7 @@ mod dynamic_template {
   MIDIOUT -1
   MAINSEND 1 0
   <ITEM
-    POSITION 0
+    POSITION 281.82031330314169
     SNAPOFFS 0
     LENGTH 188.04
     LOOP 1
@@ -83,9 +84,14 @@ mod dynamic_template {
         Attribute::String(ReaperString::DoubleQuote(val.to_owned()))
     }
 
+    fn float(val: f64) -> Attribute {
+        Attribute::Float(val.into())
+    }
+
     pub fn append_video_to(
         mut reaper_project: ReaperProject,
         video_path: PathBuf,
+        offset: f64,
     ) -> Result<ReaperProject> {
         template_video_track()
             .and_then(|mut track| -> Result<_> {
@@ -97,6 +103,7 @@ mod dynamic_template {
                     .child_object_mut("ITEM")
                     .ok_or_else(|| eyre!("no ITEM in template"))?;
                 *item.single_attribute_mut("NAME")? = file_path.clone();
+                *item.single_attribute_mut("POSITION")? = float(offset);
                 let source = item
                     .child_object_mut("SOURCE")
                     .ok_or_else(|| eyre!("no SOURCE in ITEM"))?;
@@ -117,13 +124,17 @@ mod dynamic_template {
             .map(move |_| reaper_project)
     }
 
-    pub fn with_video_track(template_path: PathBuf, video_path: PathBuf) -> Result<PathBuf> {
+    pub fn with_video_track(
+        template_path: PathBuf,
+        video_path: PathBuf,
+        offset: f64,
+    ) -> Result<PathBuf> {
         std::fs::read_to_string(template_path)
             .wrap_err("reading original")
             .and_then(|original| {
                 ReaperProject::parse_from_str(&original).wrap_err("parsing original")
             })
-            .and_then(|parsed| append_video_to(parsed, video_path))
+            .and_then(|parsed| append_video_to(parsed, video_path, offset))
             .and_then(|modified| modified.serialize_to_string().wrap_err("serializing"))
             .and_then(|serialized| {
                 directory_shenanigans::temp_home_path("generated-template.rpp").and_then(|path| {
@@ -154,8 +165,11 @@ impl StudioState {
         let space_available =
             SpaceAvailableWatcher::new(sessions_directory.as_ref().as_ref().to_owned());
 
-        let template_with_video =
-            dynamic_template::with_video_track(template, gstreamer.video_file_path.clone())?;
+        let template_with_video = dynamic_template::with_video_track(
+            template,
+            gstreamer.video_file_path.clone(),
+            dynamic_template::DEFAULT_VIDEO_FILE_OFFSET,
+        )?;
         let reaper = crate::reaper::ReaperInstance::new(
             sessions_directory,
             project_name.clone(),

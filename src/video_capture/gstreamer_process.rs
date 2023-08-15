@@ -1,5 +1,4 @@
 use super::*;
-use nix::libc::file_clone_range;
 use tokio_util::sync::CancellationToken;
 pub mod low_level;
 
@@ -8,7 +7,7 @@ pub struct GstreamerInstance {
     pub video_device: VideoDevice,
     pub video_file_path: PathBuf,
     cancel: CancellationToken,
-    process: AbortOnDrop<Result<()>>,
+    _process: AbortOnDrop<Result<()>>,
     _file_size_updater: AbortOnDrop<()>,
 }
 
@@ -63,7 +62,7 @@ impl GstreamerInstance {
             video_device,
             video_file_path: output_file_path,
             cancel,
-            process,
+            _process: process,
             _file_size_updater: file_size_updater,
         })
     }
@@ -97,7 +96,10 @@ impl RenderToTerm for GstreamerInstance {
 
         f.render_widget(
             text_block(
-                format!("runing: {}", !self.cancel.is_cancelled()),
+                format!(
+                    "running: {}",
+                    !(self.cancel.is_cancelled() || self._process.0.is_finished())
+                ),
                 format!("GStreamer ({:?})", self.video_device),
             ),
             gstreamer_block,

@@ -107,7 +107,7 @@ pub fn video_file_path(
         .map(|project_video_dir| {
             project_video_dir
                 .as_ref()
-                .join(format!("{project_name}---{now}.mov"))
+                .join(format!("{project_name}---{now}.mkv"))
         })
 }
 
